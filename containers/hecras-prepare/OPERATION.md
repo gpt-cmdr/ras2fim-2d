@@ -224,7 +224,7 @@ For plan 01 and geometry 01, HEC-RAS produces:
 | `model.p01.tmp.hdf` | Temporary plan HDF produced during preprocessing. |
 | `model.b01` | Plan binary input for the calculation stage. |
 | `model.x01` | Geometry control input, converted to Linux LF line endings. |
-| `.ras-commander/runs/<run-id>/prepare.json` | Job receipt recording success/failure, selected runtime, completion signal, and output details. |
+| `.ras-commander/runs/<run-id>/prepare.json` | Job receipt recording success/failure, selected runtime, Wine environment, completion signal, and output details. |
 
 Project names and plan/geometry numbers determine the filenames. Other working
 files and calculation logs may also remain. Worker stdout/stderr are saved
@@ -236,6 +236,31 @@ or I/O error. The Windows Step 2b controller waits for the full batch before it
 stages files for the separate Linux calculation. Qualification here covers the
 retained preprocessing sample; model suitability and compatibility with the
 later native HEC-RAS 6.5 engine require their own checks.
+
+### CPU sets, crash reports, and the Wine debugger
+
+- **CPU numbering.** In a CPU set that does not start at 0 (for example a
+  Slurm job on host CPUs 4–5), Wine reports 2 processors but returns the host
+  CPU numbers 4 and 5 from `GetCurrentProcessorNumber()`. `RasProcess.exe`
+  (.NET 4.8) then fails intermittently with `0xC0000005` while building the 2D
+  property tables. The image preloads `cpushim.so` ([source](cpushim.c)) for the
+  Wine processes; it returns the CPU's index within the job's CPU set. Set
+  `RAS2FIM_CPU_SHIM=0` to disable it, or to a file path to use another build.
+  The receipt records the shim path and SHA-256 under `wine_environment`.
+- **Child-program failures.** When `RasProcess.exe` fails, `Ras.exe` writes
+  `Error with program: RasProcess.exe ... Exit Code = <code>` to the plan HDF
+  compute messages and exits with code 0. The worker reports that line as the
+  job error instead of a later hydraulic-table validation error.
+- **Wine messages.** The image default is `WINEDEBUG=err+all,fixme-all`. Wine
+  errors from Windows Python, `Ras.exe`, and `RasProcess.exe`, including the
+  .NET runtime's fatal-error report, appear in the receipt folder's
+  `worker.stderr.log`. `WINEDEBUG=-all` hides them.
+- **Wine debugger.** The prepared prefix starts `winedbg --auto` for an
+  unhandled exception. Without a desktop it can block until the preparation
+  timeout. The wrapper adds `winedbg.exe=d` to `WINEDLLOVERRIDES` unless the
+  variable already names `winedbg`, so Wine does not start the debugger.
+  Stopping a blocked `winedbg` let HEC-RAS record the failure within seconds;
+  the override has not yet been exercised on a crashing run.
 
 ## Run configuration and review sources
 

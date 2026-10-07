@@ -20,6 +20,8 @@ JOB_SCHEMA = "ras-commander-job/v1"
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 ACCEPTED_SIGNALS = {"bco", "owned_process_artifacts"}
+CPU_SHIM_VARIABLE = "RAS2FIM_CPU_SHIM"
+DEFAULT_CPU_SHIM = Path(__file__).with_name("cpushim.so")
 
 
 class JobError(RuntimeError):
@@ -239,6 +241,59 @@ def wine_path(value, environment, to_windows, runner):
     return result.stdout.strip().splitlines()[-1]
 
 
+def disable_wine_debugger(overrides):
+    """Add ``winedbg.exe=d`` unless WINEDLLOVERRIDES already names winedbg.
+
+    The prepared prefix starts ``winedbg --auto`` for an unhandled exception.
+    Without a desktop it can block indefinitely and hold the crashed program
+    until the preparation timeout. Disabled, the program ends at once and
+    HEC-RAS records the failure.
+    """
+    entries = [entry for entry in (overrides or "").split(";") if entry.strip()]
+    for entry in entries:
+        names = entry.split("=", 1)[0].split(",")
+        if any(name.strip().lower() in ("winedbg", "winedbg.exe") for name in names):
+            return ";".join(entries)
+    return ";".join(entries + ["winedbg.exe=d"])
+
+
+def wine_environment(prefix, base=None):
+    """Return the environment for Wine processes and its receipt record.
+
+    ``RAS2FIM_CPU_SHIM`` selects the CPU-numbering shim (default: the image's
+    ``cpushim.so``); ``0`` or an empty value disables it. The shim makes the
+    processor number Wine reports agree with its processor count in a CPU set
+    that does not start at 0 (see cpushim.c).
+    """
+    environment = dict(os.environ if base is None else base)
+    environment["WINEPREFIX"] = str(prefix)
+    environment.setdefault("DISPLAY", ":99")
+    environment["WINEDLLOVERRIDES"] = disable_wine_debugger(environment.get("WINEDLLOVERRIDES"))
+
+    shim_record = None
+    setting = environment.get(CPU_SHIM_VARIABLE)
+    if setting is None:
+        shim = DEFAULT_CPU_SHIM if DEFAULT_CPU_SHIM.is_file() else None
+    elif setting.strip() in ("", "0"):
+        shim = None
+    else:
+        shim = Path(setting)
+        if not shim.is_file():
+            raise JobError(CPU_SHIM_VARIABLE + " does not name a file: " + setting)
+    if shim is not None:
+        shim = shim.resolve()
+        preload = environment.get("LD_PRELOAD", "").strip()
+        if str(shim) not in preload:
+            environment["LD_PRELOAD"] = (str(shim) + " " + preload).strip()
+        shim_record = {"path": str(shim), "sha256": sha256_file(shim)}
+    record = {
+        "WINEDEBUG": environment.get("WINEDEBUG"),
+        "WINEDLLOVERRIDES": environment["WINEDLLOVERRIDES"],
+        "cpu_shim": shim_record,
+    }
+    return environment, record
+
+
 def load_worker_result(path):
     try:
         result = json.loads(path.read_text(encoding="utf-8"))
@@ -264,6 +319,10 @@ def run_prepare(project, plan, timeout, replace_generated, run_id, job_root,
     geometry = geometry_number(project, plan)
     outputs = expected_outputs(project, plan, geometry)
     runtime = load_runtime(runtime_manifest, expected_version)
+    scratch_root = Path(os.environ.get("RAS2FIM_SCRATCH_ROOT", "/run/ras-job"))
+    scratch = scratch_root / run_id
+    prefix = scratch / "wineprefix"
+    environment, wine_settings = wine_environment(prefix)
 
     receipt_dir = root / ".ras-commander" / "runs" / run_id
     if receipt_dir.exists():
@@ -273,12 +332,9 @@ def run_prepare(project, plan, timeout, replace_generated, run_id, job_root,
     receipt_dir.mkdir(parents=True)
     receipt_path = receipt_dir / "prepare.json"
 
-    scratch_root = Path(os.environ.get("RAS2FIM_SCRATCH_ROOT", "/run/ras-job"))
-    scratch = scratch_root / run_id
     if scratch.exists():
         raise JobError("Private scratch already exists for run ID " + run_id)
     scratch.mkdir(parents=True)
-    prefix = scratch / "wineprefix"
     started = time.monotonic()
     base_receipt = {
         "schema": JOB_SCHEMA,
@@ -293,14 +349,12 @@ def run_prepare(project, plan, timeout, replace_generated, run_id, job_root,
             "replace_generated": replace_generated,
             "num_cores": num_cores,
         },
+        "wine_environment": wine_settings,
         "started_at": utc_now(),
     }
 
     try:
         shutil.copytree(runtime["prefix"], prefix, symlinks=True)
-        environment = os.environ.copy()
-        environment["WINEPREFIX"] = str(prefix)
-        environment.setdefault("DISPLAY", ":99")
         worker = Path(__file__).with_name("windows_worker.py").resolve(strict=True)
         result_file = scratch / "worker-result.json"
         command = [

@@ -446,3 +446,217 @@ def test_release_profile_keeps_runtime_and_excludes_private_or_temporary_files(m
     monkeypatch.syspath_prepend(str(REPO_ROOT / "containers" / "hecras-prepare"))
     bundle = load_container_script("bundle_profile")
     assert bundle.excluded_path(relative, "6.5") is excluded
+
+
+CRASH_MESSAGES = (
+    "Writing Geometry...\r\n"
+    "Computing 2D Flow Area 'Perimeter 1' tables: Property tables do not exist.\r\n\r\n"
+    "Error with program: RasProcess.exe  Process Count = 1  Exit Code = -1073741819\r\n"
+)
+
+
+class _Result:
+    """Bool-compatible stand-in for ras-commander's PreprocessResult."""
+
+    def __init__(self, **values):
+        self.__dict__.update(values)
+
+    def __bool__(self):
+        return bool(self.success)
+
+
+def _preprocess_result(tmp_path, signal_source):
+    return _Result(
+        success=True, plan_number="01", geometry_number="01",
+        tmp_hdf_path=tmp_path / "Model.p01.tmp.hdf", b_file_path=tmp_path / "Model.b01",
+        x_file_path=tmp_path / "Model.x01", elapsed_seconds=1.0,
+        signal_source=signal_source, full_result_copied=False, timed_out=False, error=None,
+    )
+
+
+def _write_compute_messages(path, messages):
+    import h5py
+    import numpy as np
+
+    with h5py.File(path, "w") as hdf:
+        hdf.create_dataset("Results/Summary/Compute Messages (text)",
+                           data=np.array([messages.encode("latin-1")]))
+
+
+def _install_fake_ras_commander(monkeypatch, tmp_path, preprocess_plan):
+    """Install minimal ras_commander and model_checks modules for run_worker."""
+    import types
+
+    import h5py
+
+    checks = types.ModuleType("model_checks")
+    checks.preflight = lambda *args: ([], tmp_path / "Model.g01.hdf", {}, [])
+    checks.normalize_inputs = lambda paths: []
+    checks.validate_outputs = lambda *args: {"geometry": {"area": {}}, "temporary_plan": {"area": {}}}
+    monkeypatch.setitem(sys.modules, "model_checks", checks)
+
+    class FakePlan:
+        @staticmethod
+        def get_plan_path(plan, *, ras_object):
+            return tmp_path / "Model.p01"
+
+        @staticmethod
+        def set_num_cores(*args, **kwargs):
+            return None
+
+        @staticmethod
+        def set_2d_flow_options(*args, **kwargs):
+            return None
+
+        @staticmethod
+        def get_plan_value(*args, **kwargs):
+            return 2
+
+        @staticmethod
+        def update_run_flags(*args, **kwargs):
+            return None
+
+    class FakeHdfResultsPlan:
+        @staticmethod
+        def get_compute_messages_hdf_only(path):
+            with h5py.File(path, "r") as hdf:
+                return hdf["Results/Summary/Compute Messages (text)"][()][0].decode("latin-1")
+
+    module = types.ModuleType("ras_commander")
+    module.GeomPreprocessor = types.SimpleNamespace(clear_geompre_files=lambda *a, **k: None)
+    module.RasPlan = FakePlan
+    module.RasPreprocess = types.SimpleNamespace(preprocess_plan=preprocess_plan)
+    module.RasPrj = object
+    module.HdfResultsPlan = FakeHdfResultsPlan
+    module.init_ras_project = lambda *args, **kwargs: None
+    monkeypatch.setitem(sys.modules, "ras_commander", module)
+
+
+def _worker(monkeypatch):
+    worker = load_container_script("windows_worker")
+    monkeypatch.setattr(worker, "verify_ras_commander", lambda *args: {
+        "ras_commander_wheel_sha256": "d" * 64,
+        "ras_commander_distribution_version": "0.99.2",
+    })
+    return worker
+
+
+def _run_worker(worker, tmp_path, **kwargs):
+    return worker.run_worker(str(tmp_path / "Model.prj"), "01", "C:/HEC-RAS/6.6/Ras.exe",
+                             "C:/runtime/ras_commander.whl", "d" * 64, 300, True, **kwargs)
+
+
+def test_worker_reports_child_program_failure_after_natural_exit(tmp_path, monkeypatch):
+    """Released ras-commander reports this as success; the worker must not."""
+    worker = _worker(monkeypatch)
+
+    def preprocess_plan(plan, ras_object, max_wait, clear_existing, fix_line_endings):
+        _write_compute_messages(tmp_path / "Model.p01.hdf", CRASH_MESSAGES)
+        return _preprocess_result(tmp_path, "natural_completion")
+
+    _install_fake_ras_commander(monkeypatch, tmp_path, preprocess_plan)
+    with pytest.raises(RuntimeError) as exc:
+        _run_worker(worker, tmp_path)
+    assert "failed child program" in str(exc.value)
+    assert "Error with program: RasProcess.exe" in str(exc.value)
+    assert "Exit Code = -1073741819" in str(exc.value)
+
+
+def test_worker_ignores_child_error_in_an_unchanged_plan_hdf(tmp_path, monkeypatch):
+    worker = _worker(monkeypatch)
+    _write_compute_messages(tmp_path / "Model.p01.hdf", CRASH_MESSAGES)
+
+    def preprocess_plan(plan, ras_object, max_wait, clear_existing, fix_line_endings):
+        return _preprocess_result(tmp_path, "natural_completion")
+
+    _install_fake_ras_commander(monkeypatch, tmp_path, preprocess_plan)
+    assert _run_worker(worker, tmp_path)["success"] is True
+
+
+def test_wine_environment_preloads_shim_and_disables_debugger(tmp_path):
+    prepare = load_container_script("prepare")
+    shim = tmp_path / "cpushim.so"
+    shim.write_bytes(b"shim")
+    base = {"RAS2FIM_CPU_SHIM": str(shim), "LD_PRELOAD": "/other.so",
+            "WINEDLLOVERRIDES": "mscoree=n", "WINEDEBUG": "err+all,fixme-all"}
+
+    environment, record = prepare.wine_environment(tmp_path / "prefix", base)
+
+    assert environment["WINEPREFIX"] == str(tmp_path / "prefix")
+    assert environment["LD_PRELOAD"].split() == [str(shim.resolve()), "/other.so"]
+    assert environment["WINEDLLOVERRIDES"] == "mscoree=n;winedbg.exe=d"
+    assert record == {
+        "WINEDEBUG": "err+all,fixme-all",
+        "WINEDLLOVERRIDES": "mscoree=n;winedbg.exe=d",
+        "cpu_shim": {"path": str(shim.resolve()), "sha256": hashlib.sha256(b"shim").hexdigest()},
+    }
+    again, _ = prepare.wine_environment(tmp_path / "prefix", environment)
+    assert again["LD_PRELOAD"] == environment["LD_PRELOAD"]
+    assert again["WINEDLLOVERRIDES"] == environment["WINEDLLOVERRIDES"]
+
+
+@pytest.mark.parametrize("overrides", ["winedbg.exe=n,b", "mscoree,winedbg=b"])
+def test_wine_environment_keeps_an_explicit_debugger_setting(tmp_path, overrides):
+    prepare = load_container_script("prepare")
+    environment, _ = prepare.wine_environment(
+        tmp_path, {"RAS2FIM_CPU_SHIM": "0", "WINEDLLOVERRIDES": overrides})
+    assert environment["WINEDLLOVERRIDES"] == overrides
+
+
+@pytest.mark.parametrize("setting", ["0", ""])
+def test_wine_environment_shim_can_be_disabled(tmp_path, setting):
+    prepare = load_container_script("prepare")
+    environment, record = prepare.wine_environment(tmp_path, {"RAS2FIM_CPU_SHIM": setting})
+    assert "LD_PRELOAD" not in environment
+    assert record["cpu_shim"] is None
+
+
+def test_wine_environment_rejects_a_missing_explicit_shim(tmp_path):
+    prepare = load_container_script("prepare")
+    with pytest.raises(prepare.JobError, match="RAS2FIM_CPU_SHIM"):
+        prepare.wine_environment(tmp_path, {"RAS2FIM_CPU_SHIM": str(tmp_path / "missing.so")})
+
+
+def test_controller_uses_wine_environment_and_records_it(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    prepare = load_container_script("prepare")
+    project = write_project(tmp_path, "env-test")
+    prefix = tmp_path / "seed"
+    prefix.mkdir()
+    shim = tmp_path / "cpushim.so"
+    shim.write_bytes(b"shim")
+    monkeypatch.setenv("RAS2FIM_SCRATCH_ROOT", str(tmp_path / "scratch"))
+    monkeypatch.setenv("RAS2FIM_CPU_SHIM", str(shim))
+    monkeypatch.delenv("LD_PRELOAD", raising=False)
+    monkeypatch.delenv("WINEDLLOVERRIDES", raising=False)
+    runtime = {
+        "identity": {"kind": "wine", "hec_ras_version": "6.6"},
+        "prefix": prefix, "wheel_sha": "d" * 64,
+        "windows_python": "python.exe", "ras_executable": "Ras.exe",
+        "ras_commander_wheel": "runtime.whl",
+    }
+    monkeypatch.setattr(prepare, "load_runtime", lambda *args: runtime)
+    seen = {}
+
+    def runner(command, environment, timeout):
+        if command[0] == "winepath":
+            return SimpleNamespace(returncode=0, stdout=command[-1], stderr="")
+        seen["command"] = command
+        seen["environment"] = environment
+        Path(command[command.index("--result") + 1]).write_text(json.dumps({
+            "success": False,
+            "error": "RuntimeError: HEC-RAS reported a failed child program before a "
+                     "readiness signal: Error with program: RasProcess.exe",
+        }))
+        return SimpleNamespace(returncode=1, stdout="", stderr="")
+
+    success, receipt_path = prepare.run_prepare(
+        project, "01", 300, False, "env", project.parent, "runtime.json", "6.6", runner=runner)
+    receipt = json.loads(receipt_path.read_text())
+
+    assert success is False
+    assert "Error with program: RasProcess.exe" in receipt["error"]["message"]
+    assert seen["environment"]["LD_PRELOAD"] == str(shim.resolve())
+    assert seen["environment"]["WINEDLLOVERRIDES"] == "winedbg.exe=d"
+    assert receipt["wine_environment"]["cpu_shim"]["sha256"] == hashlib.sha256(b"shim").hexdigest()
