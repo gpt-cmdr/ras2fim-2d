@@ -5,8 +5,13 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
+
+# HEC-RAS compute-message line for a failed child program such as
+# RasProcess.exe. Ras.exe still exits with code 0 after writing it.
+CHILD_PROGRAM_ERROR = re.compile(r"^\s*Error with program:", re.IGNORECASE)
 
 
 def sha256_file(path):
@@ -59,6 +64,39 @@ def write_json(path, payload):
             temporary.unlink()
 
 
+def file_state(path):
+    """Return (size, mtime_ns) for an existing file, otherwise None."""
+    try:
+        stat = Path(path).stat()
+    except OSError:
+        return None
+    return (stat.st_size, stat.st_mtime_ns)
+
+
+def child_program_errors(plan_hdf, state_before):
+    """Return HEC-RAS child-program failures from a plan HDF written by this run.
+
+    Ras.exe writes a small final plan HDF when a child program fails, for
+    example ``Error with program: RasProcess.exe  Process Count = 1  Exit Code
+    = -1073741819``, and exits with code 0. An HDF that is missing, unchanged
+    since before the run, or unreadable yields an empty list.
+    """
+    state_after = file_state(plan_hdf)
+    if state_after is None or state_after == state_before:
+        return []
+    try:
+        from ras_commander import HdfResultsPlan
+
+        text = HdfResultsPlan.get_compute_messages_hdf_only(Path(plan_hdf)) or ""
+    except Exception:
+        return []
+    lines = [line.strip() for line in text.splitlines()]
+    errors = [line for line in lines if CHILD_PROGRAM_ERROR.match(line)]
+    if errors:
+        errors.extend([line for line in lines if line.startswith("Unhandled Exception:")][:1])
+    return errors
+
+
 def run_worker(project, plan, ras_executable, ras_commander_wheel,
                expected_ras_commander_wheel_sha256, timeout, replace_generated,
                num_cores=2):
@@ -107,6 +145,8 @@ def run_worker(project, plan, ras_executable, ras_commander_wheel,
     RasPlan.update_run_flags(
         plan_path, geometry_preprocessor=True, ras_object=ras_object
     )
+    plan_hdf = Path(project).with_suffix(".p" + plan + ".hdf")
+    plan_hdf_before = file_state(plan_hdf)
     result = RasPreprocess.preprocess_plan(
         plan,
         ras_object=ras_object,
@@ -114,6 +154,15 @@ def run_worker(project, plan, ras_executable, ras_commander_wheel,
         clear_existing=replace_generated,
         fix_line_endings=True,
     )
+    # ras-commander releases before the child-program check report this case
+    # as a successful natural completion with half-written artifacts.
+    if getattr(result, "signal_source", None) == "natural_completion":
+        child_errors = child_program_errors(plan_hdf, plan_hdf_before)
+        if child_errors:
+            raise RuntimeError(
+                "HEC-RAS reported a failed child program before a readiness signal: "
+                + "; ".join(child_errors)
+            )
     if not result:
         raise RuntimeError(result.error or "HEC-RAS preprocessing failed")
     validation = validate_outputs(geometry_hdf, result.tmp_hdf_path, baseline)

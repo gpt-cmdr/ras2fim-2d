@@ -10,6 +10,7 @@ external prepared runtime described below.
 | [Dockerfile](https://github.com/gpt-cmdr/ras2fim-2d/blob/dc60b219091e85bcb4564eca45313475c39ce58a/containers/hecras-prepare/Dockerfile) | Linux dependencies, installed runtime packaging, and entrypoint. |
 | [prepare.py](https://github.com/gpt-cmdr/ras2fim-2d/blob/dc60b219091e85bcb4564eca45313475c39ce58a/containers/hecras-prepare/prepare.py) | Linux job controller. |
 | [windows_worker.py](https://github.com/gpt-cmdr/ras2fim-2d/blob/dc60b219091e85bcb4564eca45313475c39ce58a/containers/hecras-prepare/windows_worker.py) | Calls the [ras-commander APIs](https://rascommander.info/ras/) under Wine. |
+| [cpushim.c](cpushim.c) | CPU-numbering shim compiled in the `cpushim` build stage and preloaded for the Wine processes. |
 | [bundle_profile.py](https://github.com/gpt-cmdr/ras2fim-2d/blob/dc60b219091e85bcb4564eca45313475c39ce58a/containers/hecras-prepare/bundle_profile.py) | Exports a prepared runtime into an external build context. |
 | [runtime-manifest.example.json](https://github.com/gpt-cmdr/ras2fim-2d/blob/dc60b219091e85bcb4564eca45313475c39ce58a/containers/hecras-prepare/runtime-manifest.example.json) | Manifest structure only; zero fingerprints are placeholders. |
 | [verify_bundled_runtime.sh](https://github.com/gpt-cmdr/ras2fim-2d/blob/dc60b219091e85bcb4564eca45313475c39ce58a/containers/hecras-prepare/verify_bundled_runtime.sh) | Fresh-copy runtime verification launcher. |

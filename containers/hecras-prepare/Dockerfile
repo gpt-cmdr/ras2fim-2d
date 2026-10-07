@@ -1,5 +1,21 @@
 # syntax=docker/dockerfile:1.7
 ARG PYTHON_IMAGE=python:3.13.15-slim-trixie@sha256:cc9dffa47c8294ba9bb795a8dfaeb7b76f2b30acade2c52a461a2999d127eb00
+
+# Build the CPU-numbering shim (see cpushim.c) without adding a compiler to the
+# published image.
+FROM ${PYTHON_IMAGE} AS cpushim
+ARG GCC_VERSION=4:14.2.0-1
+ARG LIBC6_DEV_VERSION=2.41-12+deb13u4
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        "gcc=${GCC_VERSION}" \
+        "libc6-dev=${LIBC6_DEV_VERSION}" \
+    && rm -rf /var/lib/apt/lists/*
+COPY containers/hecras-prepare/cpushim.c /src/cpushim.c
+RUN mkdir /out \
+    && gcc -shared -fPIC -O2 -Wall -o /out/cpushim.so /src/cpushim.c -ldl -pthread \
+    && nm -D --defined-only /out/cpushim.so | grep -qw sched_getcpu
+
 FROM ${PYTHON_IMAGE} AS base
 
 ARG RAS_COMMANDER_COMMIT
@@ -39,6 +55,7 @@ RUN test -n "${RAS_COMMANDER_COMMIT}" \
 COPY containers/hecras-prepare/prepare.py ./prepare.py
 COPY containers/hecras-prepare/windows_worker.py ./windows_worker.py
 COPY containers/hecras-prepare/model_checks.py ./model_checks.py
+COPY --from=cpushim /out/cpushim.so ./cpushim.so
 
 RUN useradd --create-home --uid 1000 rasworker \
     && mkdir -p /job /runtime/wine-seed /run/ras-job \
@@ -50,7 +67,7 @@ ENV RAS2FIM_JOB_ROOT=/job \
     RAS2FIM_HECRAS_VERSION=${HEC_RAS_VERSION} \
     RAS2FIM_RAS_COMMANDER_COMMIT=${RAS_COMMANDER_COMMIT} \
     RAS2FIM_RAS_COMMANDER_WHEEL_SHA256=${RAS_COMMANDER_WHEEL_SHA256} \
-    WINEDEBUG=-all
+    WINEDEBUG=err+all,fixme-all
 
 LABEL org.opencontainers.image.title="ras2fim-2d HEC-RAS Wine preparation" \
       io.clb.hec-ras.version="${HEC_RAS_VERSION}" \
