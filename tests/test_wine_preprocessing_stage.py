@@ -617,6 +617,19 @@ def test_wine_environment_rejects_a_missing_explicit_shim(tmp_path):
         prepare.wine_environment(tmp_path, {"RAS2FIM_CPU_SHIM": str(tmp_path / "missing.so")})
 
 
+def test_wine_environment_does_not_confuse_preload_path_prefixes(tmp_path):
+    prepare = load_container_script("prepare")
+    shim = tmp_path / "cpushim.so"
+    shim.write_bytes(b"shim")
+    other = str(shim) + ".other"
+    environment, _ = prepare.wine_environment(
+        tmp_path, {"RAS2FIM_CPU_SHIM": str(shim), "LD_PRELOAD": other})
+    assert environment["LD_PRELOAD"].split() == [str(shim), other]
+    environment, _ = prepare.wine_environment(
+        tmp_path, {"RAS2FIM_CPU_SHIM": str(shim), "LD_PRELOAD": "/other.so:" + str(shim)})
+    assert environment["LD_PRELOAD"] == "/other.so:" + str(shim)
+
+
 def test_controller_uses_wine_environment_and_records_it(tmp_path, monkeypatch):
     from types import SimpleNamespace
 

@@ -13,7 +13,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY containers/hecras-prepare/cpushim.c /src/cpushim.c
 RUN mkdir /out \
-    && gcc -shared -fPIC -O2 -Wall -o /out/cpushim.so /src/cpushim.c -ldl \
+    && gcc -shared -fPIC -O2 -Wall -o /out/cpushim.so /src/cpushim.c -ldl -pthread \
     && nm -D --defined-only /out/cpushim.so | grep -qw sched_getcpu
 
 FROM ${PYTHON_IMAGE} AS base

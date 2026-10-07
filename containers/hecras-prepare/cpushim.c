@@ -14,32 +14,32 @@
  * the mask are passed through unchanged. prepare.py preloads it for the
  * Wine processes only.
  *
- * Build: cc -shared -fPIC -O2 -o cpushim.so cpushim.c -ldl
+ * Build: cc -shared -fPIC -O2 -o cpushim.so cpushim.c -ldl -pthread
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <sched.h>
+#include <pthread.h>
 
 static int (*real_getcpu)(void);
-static int map_ready;
+static pthread_once_t map_once = PTHREAD_ONCE_INIT;
 static short cpu_index[CPU_SETSIZE];
 
 static void build_map(void)
 {
     cpu_set_t set;
+    real_getcpu = (int (*)(void))dlsym(RTLD_NEXT, "sched_getcpu");
     int c, n = 0;
     for (c = 0; c < CPU_SETSIZE; c++) cpu_index[c] = -1;
     if (sched_getaffinity(0, sizeof(set), &set) == 0)
         for (c = 0; c < CPU_SETSIZE; c++)
             if (CPU_ISSET(c, &set)) cpu_index[c] = (short)n++;
-    __atomic_store_n(&map_ready, 1, __ATOMIC_RELEASE);
 }
 
 int sched_getcpu(void)
 {
     int cpu;
-    if (!real_getcpu) real_getcpu = (int (*)(void))dlsym(RTLD_NEXT, "sched_getcpu");
-    if (!__atomic_load_n(&map_ready, __ATOMIC_ACQUIRE)) build_map();
+    pthread_once(&map_once, build_map);
     cpu = real_getcpu ? real_getcpu() : -1;
     if (cpu >= 0 && cpu < CPU_SETSIZE && cpu_index[cpu] >= 0) return cpu_index[cpu];
     return cpu;

@@ -283,7 +283,7 @@ def wine_environment(prefix, base=None):
     if shim is not None:
         shim = shim.resolve()
         preload = environment.get("LD_PRELOAD", "").strip()
-        if str(shim) not in preload:
+        if str(shim) not in re.split(r"[\s:]+", preload):
             environment["LD_PRELOAD"] = (str(shim) + " " + preload).strip()
         shim_record = {"path": str(shim), "sha256": sha256_file(shim)}
     record = {
