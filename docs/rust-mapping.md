@@ -42,7 +42,11 @@ CRS does not convert elevations. Output resolution uses the output CRS units
 
 ## Install a prebuilt engine wheel
 
-The `Engine wheels` GitHub Actions workflow builds Linux x86-64 (manylinux
+The repository `wheels/` folder includes both built wheels, SHA-256 checksums
+and `BUILD.json` provenance. See `wheels/README.md` for exact installation
+commands. Both installed artifacts passed mapping smoke tests.
+
+The `Engine wheels` GitHub Actions workflow rebuilds Linux x86-64 (manylinux
 2.28, glibc 2.28 or newer) and Windows x86-64 wheels. Download the matching
 `ras2fim-engine-<platform>` artifact from the test branch's successful workflow
 run, extract it, and verify its `SHA256SUMS.txt` before installing:

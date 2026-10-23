@@ -65,7 +65,8 @@ terrain and the EPSG:2277 to EPSG:3857 mapping path. It does not establish
 support for VRT terrain, multiple meshes, every codec or CRS pair, coplanar
 triangulations, or real source grids exceeding 2²⁴ pixels. Multi-pass lookup
 encoding above that size has unit tests. Wet cells over the terrain's nodata
-sentinel were absent from this fixture. Native Windows execution is unqualified.
+sentinel were absent from this fixture. Windows installed-wheel smoke tests are separate; real-model equality on
+Windows has not been qualified.
 
 Sample preparation, SciPy triangulation and transforms, wet-union
 rasterization, output-grid derivation, GeoTIFF writing and floodplain
@@ -86,3 +87,14 @@ interpolation fallback visits the full query grid. End-to-end throughput must
 therefore be measured with the [complete-call benchmark](../benchmarks/README.md),
 including preparation and output writing, rather than inferred from kernel
 timings or the number of terrain tiles read.
+
+## Platform wheel checks
+
+The retained Linux x86-64 and Windows x86-64 wheels in `wheels/` were built
+from identical engine source with Rust 1.99.1 and maturin 1.15.0. Both passed
+installation and synthetic Step05 mapping tests (shared profiles, full maps,
+bbox crop and polygon mask) in the public build recorded in `wheels/BUILD.json`.
+Their checksums, bundled notices and source fingerprints are checked separately.
+The Windows wheel also passed a local Commander public-model full/bbox/
+multipart-polygon-with-hole crop test. That narrower check supplements the
+retained Linux comparisons; it is not an all-model Windows equivalence claim.
