@@ -7,16 +7,13 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import tempfile
-from types import SimpleNamespace
 
 import numpy as np
 import rasterio
 from affine import Affine
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from rust_mapping import Step05Grids, fn_write_profile_inputs
+from scipy.spatial import Delaunay
 
 
 def main():
@@ -31,14 +28,31 @@ def main():
                            count=1, dtype="float32", crs="EPSG:3857",
                            transform=Affine(1, 0, 0, 0, -1, 8)) as ds:
             ds.write(np.full((8, 8), 100, dtype=np.float32), 1)
-        prep = SimpleNamespace(x=np.array([0., 7., 0., 7.]),
-                               y=np.array([0., 0., 7., 7.]), z=np.full(4, 105.),
-                               x_axis=np.arange(1., 4.), y_axis=np.arange(1., 4.))
-        grids = Step05Grids(3, 3, Affine(1, 0, 1, 0, 1, 1),
-                            np.ones((3, 3), dtype=bool), Affine(1, 0, 1, 0, -1, 4),
-                            3, 3, "EPSG:3857")
         inputs = root / "inputs"
-        fn_write_profile_inputs(str(inputs), "wsel_a", prep, grids)
+        inputs.mkdir()
+        samples = np.array([[0., 0., 105.], [7., 0., 105.],
+                            [0., 7., 105.], [7., 7., 105.]])
+        tri = Delaunay(samples[:, :2])
+        arrays = {"samples": (samples, "<f8"), "simplices": (tri.simplices, "<u4"),
+                  "transform": (tri.transform, "<f8"), "neighbors": (tri.neighbors, "<i4"),
+                  "equations": (tri.equations, "<f8"),
+                  "x_axis": (np.arange(1., 4.), "<f8"),
+                  "y_axis": (np.arange(1., 4.), "<f8"),
+                  "wet_mask": (np.ones((3, 3)), "u1")}
+        files = {}
+        for name, (values, dtype) in arrays.items():
+            arr = np.ascontiguousarray(values, dtype=dtype)
+            filename = name + ".bin"
+            arr.tofile(inputs / filename)
+            files[name] = {"file": filename, "dtype": arr.dtype.str, "shape": list(arr.shape)}
+        meta = {"schema": "ras2fim-step05-inputs/1", "rows": 3, "cols": 3,
+                "raster_affine": {"x0": 1., "y0": 1., "res_x": 1., "res_y": 1.},
+                "delaunay": {"paraboloid_scale": tri.paraboloid_scale,
+                             "paraboloid_shift": tri.paraboloid_shift,
+                             "min_bound": tri.min_bound.tolist(),
+                             "max_bound": tri.max_bound.tolist(), "nsimplex": tri.nsimplex},
+                "files": files}
+        (inputs / "inputs.json").write_text(json.dumps(meta))
         mask = root / "mask.u8"
         mask.write_bytes(bytes([1, 0, 1, 1]))
         aois = [{"id": "full"}, {"id": "bbox", "window": [1, 1, 2, 2]},
@@ -48,7 +62,7 @@ def main():
                                "crs_identity": {"kind": "epsg"}},
                    "source_crs": {"kind": "terrain"},
                    "budgets": {"threads": 2, "max_cache_bytes": 4 << 20,
-                               "max_profile_bytes": 32 << 20, "max_inflight_profiles": 2},
+                               "max_profile_bytes": 128 << 20, "max_inflight_profiles": 2},
                    "interpolation": {"selection": "auto"},
                    "nudge": {"dst_epsg": 3857, "error_threshold": 0.125,
                              "memory_limit_bytes": 67108864., "method": "lookup"},
@@ -59,7 +73,9 @@ def main():
         rp = root / "request.json"
         rp.write_text(json.dumps(request))
         out = root / "out"
-        subprocess.run([engine, "step05", str(rp), str(out)], check=True)
+        result = subprocess.run([engine, "step05", str(rp), str(out)])
+        if result.returncode:
+            raise AssertionError((out / "report.json").read_text())
         report = json.loads((out / "report.json").read_text())
         assert report["status"] == "complete", report
         for name in ["wsel_a", "wsel_b"]:
