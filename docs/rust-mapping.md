@@ -219,3 +219,15 @@ handling. Real-data tests run only when the external public fixture and binary a
 `RAS2FIM_PUBLIC_SAMPLE` (results.gpkg, sample.p01.hdf, terrain.tif),
 `RAS2FIM_STEP05_ORACLE_FLOWS` (upstream Step 05 captures) and `RAS2FIM_RUST_BINARY`. Without
 them those tests are reported as skipped.
+
+## Upstream test branch
+
+This contribution is based on `andycarter-pe/ras2fim-2d` main at `3146f647`.
+The default Python engine retains upstream's GDAL subtraction and WSE-addition
+operations. GDAL Python imports occur when those functions are used, allowing
+the optional native engine to run without importing `osgeo`. The upstream
+conda environment is retained. CI tests use a separate modern qualification
+environment (Python 3.13 and SciPy 1.16.3); this does not qualify every older
+SciPy version in existing installations. Install the normal project dependencies
+in addition to the engine wheel. The native engine does not replace HEC-RAS
+model execution or the other workflow steps.

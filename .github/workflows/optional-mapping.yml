@@ -28,12 +28,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: mamba-org/setup-micromamba@v2
         with:
-          python-version: '3.13'
-      - name: Install pinned application dependencies
-        run: python -m pip install -r tests/requirements-mapping.txt
+          environment-name: mapping-tests
+          create-args: >-
+            python=3.13 pip gdal rasterio=1.4.4 scipy=1.16.3
+            numpy=2.3.5 pandas=2.3.3 geopandas=1.1.1 h5py matplotlib
+            pyproj=3.7.2 shapely=2.1.2 pytest
+          cache-environment: true
       - name: Test optional dispatch and spatial constraints
+        shell: bash -el {0}
         run: python -m pytest tests/test_mapping_aoi.py tests/test_rust_mapping.py tests/test_mapping_run_safety.py tests/test_benchmark_mapping.py -q
 
   rust:
