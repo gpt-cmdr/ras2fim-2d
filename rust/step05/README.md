@@ -1,6 +1,7 @@
 # Optional Step05 Rust engine
 
-Build the standalone engine explicitly, then pass its path to Step05 with
+Install a platform wheel as described in [the mapping guide](../../docs/rust-mapping.md),
+or build the standalone engine explicitly, then pass its path to Step05 with
 `--mapping-engine rust --rust-binary /path/to/ras2fim-batch`.
 The Python engine remains the default. Python does not build or download the engine.
 
@@ -10,7 +11,8 @@ cargo test --locked --manifest-path rust/step05/Cargo.toml --all-targets
 cargo clippy --locked --manifest-path rust/step05/Cargo.toml --all-targets -- -D warnings
 ```
 
-The tested compiler is Rust 1.99.1 on Linux/WSL. A Windows build is not yet qualified.
+The tested compiler is Rust 1.99.1 on Linux/WSL. Windows wheels have a separate installed-binary smoke test; real-model equality
+qualification remains Linux-specific.
 The executable is `rust/step05/target/release/ras2fim-batch` (with `.exe` on Windows).
 The crate disables terrio's default features and enables only `geotiff`; it does not
 link GDAL. The Python workflow uses SciPy, rasterio and its raster libraries for

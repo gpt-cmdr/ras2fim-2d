@@ -13,16 +13,15 @@ throughput guarantee or physical-disk benchmark.
 | 1 | Full | 3.027 | 0.107 | 1.921 | 0.061 | 1.58× |
 | 1 | Bbox | 3.322 | 0.198 | 1.757 | 0.051 | 1.89× |
 | 1 | Polygon | 3.018 | 0.098 | 1.660 | 0.306 | 1.82× |
-| 19 | Full | 15.955 | 1.231 | 23.787 | 2.280 | 0.67× |
 | 19 | Bbox | 20.181 | 2.789 | 12.502 | 3.116 | 1.61× |
 | 19 | Polygon | 16.588 | 0.836 | 11.156 | 0.740 | 1.49× |
 
-A ratio above one means higher Rust throughput. The full 19-profile case was
-slower in this run; it must not be omitted from a speed claim. Competing host
-work was not measured separately, so the difference cannot be attributed to it.
-The Rust path prepares and writes profiles serially in Python, while the
-reference distributes its complete per-profile pipeline across four processes.
-Native profile concurrency does not parallelize those Python stages.
+A ratio above one means higher Rust throughput. These selected observations
+cover single maps and constrained catalogs. Full-domain catalog throughput is
+unqualified pending a controlled rerun; this table makes no claim for that
+case or for general catalog speedup. Raw development evidence is retained
+outside Git. Native profile concurrency does not parallelize Python preparation
+and output stages.
 
 Settings were the Python default engine with a four-process pool, versus Rust
 with four Rayon threads, four profiles per request, one profile in flight and

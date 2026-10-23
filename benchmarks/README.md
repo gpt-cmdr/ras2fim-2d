@@ -1,7 +1,8 @@
 # Mapping engine performance checks
 
-See [development observations](performance.md) for the measured single-map and
-catalog results, including the slower full-domain catalog case and its limits.
+See [development observations](performance.md) for selected single-map and
+constrained-catalog observations and their limits.
+Full-domain catalog throughput remains unqualified pending controlled remeasurement.
 
 `benchmark_mapping.py` compares complete Step05 calls on the same public model inputs,
 selected flow columns, CPU affinity and output storage. It includes Python preparation,

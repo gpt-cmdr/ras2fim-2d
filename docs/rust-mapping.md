@@ -40,6 +40,30 @@ CRS does not convert elevations. Output resolution uses the output CRS units
   duplicate samples, infinite WSE values, a wet union or terrain extent that would change the
   Step 05 grid crop, and the engine's own typed `unsupported` errors.
 
+## Install a prebuilt engine wheel
+
+The `Engine wheels` GitHub Actions workflow builds Linux x86-64 (manylinux
+2.28, glibc 2.28 or newer) and Windows x86-64 wheels. Download the matching
+`ras2fim-engine-<platform>` artifact from the test branch's successful workflow
+run, extract it, and verify its `SHA256SUMS.txt` before installing:
+
+```bash
+python -m pip install /path/to/ras2fim_engine-0.1.0-py3-none-<platform>.whl
+ras2fim-batch method
+```
+
+Use the actual wheel filename. Install it into the same environment used to
+run Step05 so its scripts directory is on `PATH`. This optional wheel installs
+only the compiled engine; it does not install the Python application or GIS
+dependencies. No Rust compiler or system GDAL is needed by the engine. The
+Python workflow still needs its existing raster libraries. Nothing is
+published to PyPI by the workflow. Artifacts expire after 90 days; rebuild
+from the retained source or retain downloaded wheels for longer testing.
+
+Both wheels run an installed-binary mapping smoke test in CI. The retained
+real-model equality evidence remains Linux-specific; a successful Windows
+wheel smoke test does not establish real-model parity on Windows.
+
 ## Building and locating the binary
 
 The engine source is in `rust/step05`. Python never builds it; build it yourself:
@@ -53,7 +77,7 @@ cargo build --release --locked
 The binary is found from, in order: `rust_binary=` / `--rust-binary`, `[05_raster_engine]
 str_rust_binary`, then `ras2fim-batch` on `PATH`. If none exists, Step 05 raises
 `RustBinaryNotFoundError` before reading any input. The engine is launched with an argument
-list (no shell). Linux is the tested platform.
+list (no shell). Linux has retained real-model comparison evidence.
 
 ## Python API
 
