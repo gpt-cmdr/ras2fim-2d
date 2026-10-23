@@ -39,6 +39,13 @@ import argparse
 import time
 import datetime
 import warnings
+import json
+import shutil
+import tempfile
+from typing import NamedTuple
+
+import mapping_aoi
+import rust_mapping
 # ************************************************************
 
 
@@ -287,16 +294,31 @@ def fn_set_nan(str_original_raster_path):
 
 
 # --------------------------------
-def fn_create_raster_products(gdf_wsel_wet_cells_cleaned_pnt,
-                              gdf_wsel_wet_cells_cleaned_ar,
-                              str_wsel_col_name,
-                              gdf_dissolved,
-                              flt_pixel_width,
-                              str_dem_output_folder,
-                              geom,
-                              str_dem_path):
+class PreparedInterpolationInputs(NamedTuple):
+    """Global interpolation inputs shared by the python and rust engines."""
+    x: np.ndarray        # sample x: wet centres (sorted cell_idx), then merged extras
+    y: np.ndarray
+    z: np.ndarray        # sample WSE in the same order
+    x_axis: np.ndarray   # exact np.arange query axes (effective step != pixel size)
+    y_axis: np.ndarray
+    xmin: float          # raster 01 affine origin and pixel size
+    ymin: float
+    x_res: float
+    y_res: float
 
-    # List to store created points
+
+def fn_prepare_interpolation_inputs(gdf_wsel_wet_cells_cleaned_pnt,
+                                    gdf_wsel_wet_cells_cleaned_ar,
+                                    str_wsel_col_name,
+                                    gdf_dissolved,
+                                    flt_pixel_width):
+    """
+    Upstream Step 05 sample preparation: wet cell centres plus the cell
+    vertices outside their convex hull (duplicates merged by rounded XY with
+    mean WSE), and the np.arange query axes over the wet-union bounds.
+    Always global - an AOI never crops these inputs.
+    """
+
     created_points = []
     list_cell_wsel = []
 
@@ -347,7 +369,30 @@ def fn_create_raster_products(gdf_wsel_wet_cells_cleaned_pnt,
     # Create the grid
     xi = np.arange(xmin, xmax, x_res)
     yi = np.arange(ymin, ymax, y_res)
-    xi, yi = np.meshgrid(xi, yi)
+
+    return PreparedInterpolationInputs(x, y, z, xi, yi, xmin, ymin, x_res, y_res)
+# --------------------------------
+
+
+# --------------------------------
+def fn_create_raster_products(gdf_wsel_wet_cells_cleaned_pnt,
+                              gdf_wsel_wet_cells_cleaned_ar,
+                              str_wsel_col_name,
+                              gdf_dissolved,
+                              flt_pixel_width,
+                              str_dem_output_folder,
+                              geom,
+                              str_dem_path):
+
+    prep = fn_prepare_interpolation_inputs(gdf_wsel_wet_cells_cleaned_pnt,
+                                           gdf_wsel_wet_cells_cleaned_ar,
+                                           str_wsel_col_name,
+                                           gdf_dissolved,
+                                           flt_pixel_width)
+    x, y, z = prep.x, prep.y, prep.z
+    xmin, ymin, x_res, y_res = prep.xmin, prep.ymin, prep.x_res, prep.y_res
+
+    xi, yi = np.meshgrid(prep.x_axis, prep.y_axis)
 
     # Perform bilinear interpolation
     zi = griddata((x, y), z, (xi, yi), method='linear')
@@ -803,16 +848,365 @@ def fn_str_to_bool(value):
 
 
 # ---------------------------------------------
-def fn_generate_depth_wsel_rasters(str_config_file_path,
+def fn_read_output_products(config):
+    """[06_output_products] output CRS and resolution, required by AOI/rust."""
+    if '06_output_products' not in config:
+        raise ValueError('[06_output_products] section not found in the config file.')
+    section = config['06_output_products']
+    str_output_crs = section.get('str_output_crs', '')
+    flt_desired_res = section.getfloat('flt_desired_res', 0)
+    if not str_output_crs or not flt_desired_res > 0:
+        raise ValueError('[06_output_products] needs str_output_crs and a positive flt_desired_res')
+    return str_output_crs, flt_desired_res
+# ---------------------------------------------
+
+
+# ..................................
+def fn_nudge_output_paths(str_output_dir, str_wsel_col_name):
+    """Upstream names of products 09, 10 and 11."""
+    return (os.path.join(str_output_dir, '09_' + str_wsel_col_name + '_depth_nudge.tif'),
+            os.path.join(str_output_dir, '10_' + str_wsel_col_name + '_wsel_nudge.tif'),
+            os.path.join(str_output_dir, '11_' + str_wsel_col_name + '_floodplain_ar.gpkg'))
+
+
+def fn_remove_nudge_products(str_output_dir, str_wsel_col_name):
+    for str_path in fn_nudge_output_paths(str_output_dir, str_wsel_col_name):
+        if os.path.exists(str_path):
+            os.remove(str_path)
+# ..................................
+
+
+# ----------------------------------
+def fn_write_nudge_products(str_wsel_col_name, arr_depth, arr_wsel, transform, str_output_crs,
+                            str_output_dir, b_aoi):
+    """
+    Write 09 (depth) and 10 (WSEL) as float32 LZW GeoTIFFs with NaN nodata,
+    then 11 from 09 with the upstream fn_make_floodplain_gdf. Used for the
+    rust engine and for AOI clips of either engine. Returns a status.
+    """
+    str_09, str_10, str_11 = fn_nudge_output_paths(str_output_dir, str_wsel_col_name)
+    int_h, int_w = arr_depth.shape
+    profile = {'driver': 'GTiff', 'dtype': 'float32', 'width': int_w, 'height': int_h, 'count': 1,
+               'crs': str_output_crs, 'transform': transform, 'nodata': np.nan,
+               'compress': 'lzw', 'tiled': False, 'interleave': 'band'}
+    for str_path, arr in ((str_09, arr_depth), (str_10, arr_wsel)):
+        with rasterio.open(str_path, 'w', **profile) as dst:
+            dst.write(np.asarray(arr, dtype=np.float32), 1)
+    if os.path.exists(str_11):
+        os.remove(str_11)
+
+    flt_minvalue = 0
+    flt_max_value = 10000
+    if b_aoi and not np.any((arr_depth > flt_minvalue) & (arr_depth <= flt_max_value)):
+        # a real AOI crop without flooded pixels: no floodplain polygon
+        return 'no_flooded_pixels'
+    gdf_floodplain = fn_make_floodplain_gdf(str_09, flt_minvalue, flt_max_value)
+    gdf_floodplain.to_file(str_11)
+    return 'complete'
+# ----------------------------------
+
+
+# ----------------------------------
+def fn_postclip_python_products(str_wsel_col_name, aoi, str_output_crs, str_output_dir):
+    """AOI for the python engine: clip the full-map 09/10, then rebuild 11."""
+    str_09, str_10, _ = fn_nudge_output_paths(str_output_dir, str_wsel_col_name)
+    if not (os.path.exists(str_09) and os.path.exists(str_10)):
+        fn_remove_nudge_products(str_output_dir, str_wsel_col_name)
+        return {'status': 'failed', 'error': 'python engine wrote no 09/10 (see printed error)'}
+    with rasterio.open(str_09) as src:
+        arr_depth = src.read(1)
+        transform = src.transform
+        tup_shape = (src.height, src.width)
+    with rasterio.open(str_10) as src:
+        arr_wsel = src.read(1)
+        if src.transform != transform or (src.height, src.width) != tup_shape:
+            raise RuntimeError(f'{str_wsel_col_name}: 09 and 10 grids differ')
+    win = mapping_aoi.fn_aoi_window(aoi, transform, tup_shape[1], tup_shape[0], str_output_crs)
+    if win.is_empty:
+        fn_remove_nudge_products(str_output_dir, str_wsel_col_name)
+        return {**win.describe(), 'status': mapping_aoi.AOI_STATUS_EMPTY}
+    str_status = fn_write_nudge_products(str_wsel_col_name,
+                                         mapping_aoi.fn_apply_aoi_window(arr_depth, win),
+                                         mapping_aoi.fn_apply_aoi_window(arr_wsel, win),
+                                         win.transform, str_output_crs, str_output_dir, True)
+    return {**win.describe(), 'status': str_status}
+# ----------------------------------
+
+
+# ----------------------------------
+def fn_prepare_global_samples(str_wsel_col_name, gdf_cells_wsel, gdf_center_points, flt_pixel_width):
+    """
+    Global (never AOI-cropped) preparation for one profile, from the same
+    upstream functions the python engine uses. Returns (prep, geom).
+    """
+    arr_values = gdf_cells_wsel[str_wsel_col_name].to_numpy(dtype=np.float64)
+    if np.isinf(arr_values).any():
+        # upstream only drops NaN; infinite WSE would enter the interpolation
+        raise rust_mapping.UnsupportedForRustEngine(
+            f'{str_wsel_col_name}: infinite WSE values are not supported')
+    if not np.isfinite(arr_values).any():
+        raise ValueError(f'{str_wsel_col_name}: no wet cells')
+    geom, gdf_dissolved, gdf_pnt, gdf_ar = fn_wet_cells_per_run(str_wsel_col_name,
+                                                                gdf_cells_wsel,
+                                                                gdf_center_points)
+    prep = fn_prepare_interpolation_inputs(gdf_pnt, gdf_ar, str_wsel_col_name,
+                                           gdf_dissolved, flt_pixel_width)
+    return prep, geom
+# ----------------------------------
+
+
+# ..................................
+def fn_write_mapping_manifest(str_output_dir, dict_manifest):
+    _fn_write_mapping_json(os.path.join(str_output_dir, rust_mapping.STR_RESULT_MANIFEST), dict_manifest)
+
+
+def _fn_write_mapping_json(path, value):
+    temporary = path + '.partial'
+    try:
+        with open(temporary, 'w') as stream:
+            json.dump(value, stream, indent=1, default=str)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.isfile(temporary):
+            os.remove(temporary)
+
+
+def _fn_mapping_products(folder):
+    if not os.path.isdir(folder):
+        return []
+    return [os.path.join(folder, name) for name in os.listdir(folder)
+            if name.startswith(('09_', '10_', '11_'))
+            and name.endswith(('.tif', '.gpkg')) and os.path.isfile(os.path.join(folder, name))]
+
+
+def fn_generate_depth_wsel_rasters(str_config_file_path, str_hdf_file_path, str_dem_path,
+                                   str_hydraulic_results_gpkg, str_output_dir, b_print_output,
+                                   *, mapping_engine=None, rust_binary=None, mapping_threads=None,
+                                   bbox=None, polygon=None, polygon_layer=None, aoi_crs=None,
+                                   **rust_options):
+    """Map Step05 profiles; optional engines/AOIs require fresh mapping outputs.
+
+    The unchanged Python default keeps its original output policy. Rust or AOI
+    runs record in-progress/completed/failed status and reject existing mapping
+    products or manifests, preventing an old map from becoming a new result.
+    """
+    config = configparser.ConfigParser()
+    config.read(str_config_file_path)
+    options = dict(mapping_engine=mapping_engine, rust_binary=rust_binary,
+                   mapping_threads=mapping_threads, bbox=bbox, polygon=polygon,
+                   polygon_layer=polygon_layer, aoi_crs=aoi_crs, **rust_options)
+    opts = rust_mapping.fn_resolve_mapping_options(config, engine=mapping_engine,
+        rust_binary=rust_binary, threads=mapping_threads, bbox=bbox, polygon=polygon,
+        polygon_layer=polygon_layer, aoi_crs=aoi_crs, **rust_options)
+    optional = opts.engine == rust_mapping.ENGINE_RUST or opts.has_aoi_options
+    common = (str_config_file_path, str_hdf_file_path, str_dem_path,
+              str_hydraulic_results_gpkg, str_output_dir, b_print_output)
+    if not optional:
+        return _fn_generate_depth_wsel_rasters(*common, **options)
+    if opts.engine == rust_mapping.ENGINE_RUST:
+        rust_mapping.fn_resolve_rust_binary(opts.rust_binary)
+    output_crs, _ = fn_read_output_products(config)
+    mapping_aoi.fn_resolve_aoi(bbox=opts.bbox, polygon=opts.polygon,
+        polygon_layer=opts.polygon_layer, aoi_crs=opts.aoi_crs, default_bbox_crs=output_crs)
+    manifest_path = os.path.join(str_output_dir, rust_mapping.STR_RESULT_MANIFEST)
+    report_path = os.path.join(str_output_dir, rust_mapping.STR_ENGINE_REPORT)
+    if _fn_mapping_products(str_output_dir) or any(os.path.exists(p) for p in (manifest_path, report_path)):
+        raise FileExistsError('Optional mapping requires fresh outputs; use a new output directory.')
+    os.makedirs(str_output_dir, exist_ok=True)
+    marker = {'engine': opts.engine, 'status': 'in_progress', 'columns': {}}
+    fn_write_mapping_manifest(str_output_dir, marker)
+    if opts.engine == rust_mapping.ENGINE_RUST:
+        _fn_write_mapping_json(report_path, marker)
+    try:
+        result = _fn_generate_depth_wsel_rasters(*common, **options)
+    except Exception as error:
+        try:
+            with open(manifest_path) as stream:
+                marker = json.load(stream)
+        except (OSError, ValueError):
+            marker = {'engine': opts.engine, 'columns': {}}
+        # A finished per-profile manifest may retain good profiles. A session
+        # abort has no such manifest: remove its uncommitted product set.
+        status = 'failed' if marker.get('columns') else 'aborted'
+        if status == 'aborted':
+            for path in _fn_mapping_products(str_output_dir):
+                os.remove(path)
+        marker.update(status=status, error=f'{type(error).__name__}: {error}')
+        fn_write_mapping_manifest(str_output_dir, marker)
+        if opts.engine == rust_mapping.ENGINE_RUST:
+            try:
+                with open(report_path) as stream:
+                    report = json.load(stream)
+            except (OSError, ValueError):
+                report = {}
+            report.update(status=status, error=marker['error'])
+            _fn_write_mapping_json(report_path, report)
+        raise
+    with open(manifest_path) as stream:
+        marker = json.load(stream)
+    marker['status'] = 'complete'
+    fn_write_mapping_manifest(str_output_dir, marker)
+    if opts.engine == rust_mapping.ENGINE_RUST:
+        with open(report_path) as stream:
+            report = json.load(stream)
+        report['status'] = 'complete'
+        _fn_write_mapping_json(report_path, report)
+    return result
+# ..................................
+
+
+# ---------------------------------------------
+def fn_generate_rasters_rust(str_hdf_file_path, str_dem_path, str_hydraulic_results_gpkg,
+                             str_output_dir, opts, aoi, str_output_crs, flt_desired_res):
+    """Step 05 with the rust engine: python prepares, ras2fim-batch maps."""
+    str_binary = rust_mapping.fn_resolve_rust_binary(opts.rust_binary)
+    int_dst_epsg = rust_mapping.fn_output_epsg(str_output_crs)
+
+    gdf_cells_wsel = gpd.read_file(str_hydraulic_results_gpkg, layer='02_cells_wsel_ar')
+    dict_terrain = rust_mapping.fn_terrain_identity(str_binary, str_dem_path, gdf_cells_wsel.crs,
+                                                    opts.rust_terrain_crs_fnv1a64)
+    list_unique_indices_sorted = sorted(gdf_cells_wsel['cell_idx'].unique())
+    list_wsel_col_names = [col for col in gdf_cells_wsel.columns if col.startswith('wsel')]
+    gdf_center_points = fn_gdf_cell_centerpoints(str_hdf_file_path,
+                                                 list_unique_indices_sorted,
+                                                 gdf_cells_wsel)
+    flt_pixel_width = fn_get_raster_resolution(str_dem_path)
+    with rasterio.open(str_dem_path) as src:
+        tup_terrain_bounds = tuple(src.bounds)
+
+    os.makedirs(str_output_dir, exist_ok=True)
+    dict_columns = {}
+    list_reports = []
+    str_work = tempfile.mkdtemp(prefix='.rust_step05_', dir=str_output_dir)
+    try:
+        for int_batch, list_batch in enumerate(rust_mapping.fn_chunks(list_wsel_col_names,
+                                                                      opts.rust_profiles_per_request)):
+            str_batch = os.path.join(str_work, f'batch_{int_batch:04d}')
+            os.makedirs(os.path.join(str_batch, 'masks'))
+            list_profiles = []
+            for str_col in list_batch:
+                try:
+                    prep, geom = fn_prepare_global_samples(str_col, gdf_cells_wsel,
+                                                           gdf_center_points, flt_pixel_width)
+                    grids = rust_mapping.fn_derive_step05_grids(prep, geom, gdf_cells_wsel.crs,
+                                                                tup_terrain_bounds, str_output_crs,
+                                                                flt_desired_res)
+                    win = None
+                    str_mask = None
+                    if aoi is not None:
+                        win = mapping_aoi.fn_aoi_window(aoi, grids.dest_transform, grids.dest_width,
+                                                        grids.dest_height, str_output_crs)
+                        if win.is_empty:
+                            fn_remove_nudge_products(str_output_dir, str_col)
+                            dict_columns[str_col] = {**win.describe(),
+                                                     'status': mapping_aoi.AOI_STATUS_EMPTY}
+                            continue
+                        if win.mask is not None:
+                            str_mask = f'masks/{str_col}.u8'
+                            np.ascontiguousarray(win.mask, dtype=np.uint8).tofile(
+                                os.path.join(str_batch, str_mask))
+                    str_inputs = f'inputs/{str_col}'
+                    rust_mapping.fn_write_profile_inputs(os.path.join(str_batch, str_inputs),
+                                                         str_col, prep, grids)
+                    # the wet mask now lives in the prepared file; keep only grid metadata
+                    grids.wet_mask = None
+                    del prep, geom
+                    list_profiles.append(rust_mapping.ProfileRequest(str_col, str_inputs, grids,
+                                                                     win, str_mask))
+                except Exception as e:
+                    print(f'Error processing {str_col}: {e}')
+                    fn_remove_nudge_products(str_output_dir, str_col)
+                    dict_columns[str_col] = {'status': 'failed', 'error': f'{type(e).__name__}: {e}'}
+
+            if list_profiles:
+                list_results, dict_report = rust_mapping.fn_run_step05_request(
+                    str_binary, str_batch, int_batch, dict_terrain, opts, list_profiles, int_dst_epsg)
+                list_reports.append({'batch': int_batch, 'profiles': [p.column for p in list_profiles],
+                                     'report': dict_report})
+                dict_windows = {p.column: p.aoi_window for p in list_profiles}
+                for result in list_results:
+                    if result.status != 'complete':
+                        print(f'Error processing {result.column}: {result.error}')
+                        fn_remove_nudge_products(str_output_dir, result.column)
+                        dict_columns[result.column] = {'status': 'failed', 'error': result.error}
+                        continue
+                    str_status = fn_write_nudge_products(result.column, result.depth, result.wse,
+                                                         result.transform, str_output_crs,
+                                                         str_output_dir, aoi is not None)
+                    win = dict_windows[result.column]
+                    dict_columns[result.column] = {**(win.describe() if win is not None else {}),
+                                                   'status': str_status}
+            if not opts.rust_keep_work:
+                shutil.rmtree(str_batch)
+    finally:
+        if not opts.rust_keep_work:
+            shutil.rmtree(str_work, ignore_errors=True)
+
+    # Native engine reports (cache, source pixels, stage timings) for benchmarks
+    with open(os.path.join(str_output_dir, rust_mapping.STR_ENGINE_REPORT), 'w') as f:
+        json.dump({'schema': 'ras2fim-2d-rust-mapping-report/1',
+                   'binary': os.path.basename(str_binary),
+                   'terrain_epsg': dict_terrain['epsg'],
+                   'crs_identity': dict_terrain['crs_identity'],
+                   'batches': list_reports}, f, indent=1)
+    return dict_columns, (str_work if opts.rust_keep_work else None)
+# ---------------------------------------------
+
+
+# ---------------------------------------------
+def _fn_generate_depth_wsel_rasters(str_config_file_path,
                                    str_hdf_file_path,
                                    str_dem_path,
                                    str_hydraulic_results_gpkg,
                                    str_output_dir,
-                                   b_print_output):
-    
+                                   b_print_output,
+                                   *,
+                                   mapping_engine=None,
+                                   rust_binary=None,
+                                   mapping_threads=None,
+                                   bbox=None,
+                                   polygon=None,
+                                   polygon_layer=None,
+                                   aoi_crs=None,
+                                   **rust_options):
+    """
+    Step 05. Without options (and with an empty [05_raster_engine]) this is
+    the original python engine, unchanged. Options (keyword > config):
+      mapping_engine   'python' (default) or 'rust' (opt-in; needs the binary)
+      rust_binary      path to ras2fim-batch (default: PATH lookup)
+      mapping_threads  python pool processes / rust threads
+      bbox             (xmin, ymin, xmax, ymax); CRS aoi_crs or the output CRS
+      polygon          GeoJSON/GPKG path or Shapely (Multi)Polygon
+      polygon_layer, aoi_crs
+      rust_options     rust_max_cache_mib, rust_max_profile_mib,
+                       rust_profiles_per_request, rust_max_inflight_profiles,
+                       rust_nudge_method, rust_terrain_crs_fnv1a64, rust_keep_work
+    Returns None for the unchanged default (no AOI, python engine);
+    otherwise a dict of per-column results.
+    """
+    config_engine = configparser.ConfigParser()
+    config_engine.read(str_config_file_path)
+    opts = rust_mapping.fn_resolve_mapping_options(config_engine,
+                                                   engine=mapping_engine,
+                                                   rust_binary=rust_binary,
+                                                   threads=mapping_threads,
+                                                   bbox=bbox,
+                                                   polygon=polygon,
+                                                   polygon_layer=polygon_layer,
+                                                   aoi_crs=aoi_crs,
+                                                   **rust_options)
+    aoi = None
+    if opts.engine == rust_mapping.ENGINE_RUST or opts.has_aoi_options:
+        str_aoi_output_crs, flt_aoi_desired_res = fn_read_output_products(config_engine)
+        aoi = mapping_aoi.fn_resolve_aoi(bbox=opts.bbox, polygon=opts.polygon,
+                                         polygon_layer=opts.polygon_layer, aoi_crs=opts.aoi_crs,
+                                         default_bbox_crs=str_aoi_output_crs)
+
     # supress all warnings
     warnings.filterwarnings("ignore", category=UserWarning )
-    
+
     if b_print_output:
         print(" ")
         print("+=================================================================+")
@@ -821,67 +1215,88 @@ def fn_generate_depth_wsel_rasters(str_config_file_path,
         print("|             Center for Water and the Environment                |")
         print("|                 University of Texas at Austin                   |")
         print("+-----------------------------------------------------------------+")
-    
-        
+
+
         print("  ---(c) INPUT GLOBAL CONFIGUTATION FILE: " + str_config_file_path)
         print("  ---(i) INPUT HEC-RAS PLAN (HDF): " + str_hdf_file_path)
         print("  ---(t) INPUT TERRAIN (TIF): " + str_dem_path)
         print("  ---(g) INPUT HYDRAUNIC RESULTS (GPKG): " + str_hydraulic_results_gpkg)
         print("  ---(o) OUTPUT PATH: " + str_output_dir)
         print("  ---[r] PRINT OUTPUT: " + str(b_print_output))
+        if not opts.is_legacy_default:
+            print("  ---[e] MAPPING ENGINE: " + opts.engine)
+            if aoi is not None:
+                print("  ---[a] AREA OF INTEREST: " + aoi.source + " (" + aoi.crs.to_string() + ")")
         print("===================================================================")
-    
+
+    if opts.engine == rust_mapping.ENGINE_RUST:
+        dict_columns, str_kept = fn_generate_rasters_rust(str_hdf_file_path, str_dem_path,
+                                                          str_hydraulic_results_gpkg, str_output_dir,
+                                                          opts, aoi, str_aoi_output_crs,
+                                                          flt_aoi_desired_res)
+        fn_write_mapping_manifest(str_output_dir, {
+            'engine': opts.engine, 'aoi': aoi.describe() if aoi else None,
+            'threads': opts.resolved_threads(), 'kept_work_dir': str_kept, 'columns': dict_columns})
+        list_failed = [c for c, d in dict_columns.items() if d['status'] == 'failed']
+        if list_failed:
+            raise rust_mapping.RustMappingError(f'rust mapping failed for {len(list_failed)} profile(s): '
+                                                f'{list_failed}; see {rust_mapping.STR_RESULT_MANIFEST}')
+        return dict_columns
+
     # Read the GeoPackage file
     gdf_cells_wsel = gpd.read_file(str_hydraulic_results_gpkg, layer='02_cells_wsel_ar')
-    
+
     # Get unique values of 'cell_idx' and sort them
     list_unique_indices_sorted = sorted(gdf_cells_wsel['cell_idx'].unique())
-    
+
     list_wsel_col_names = [col for col in gdf_cells_wsel.columns if col.startswith('wsel')]
-    
+
     # Create a gdf of all cells that are "wet"
     gdf_center_points = fn_gdf_cell_centerpoints(str_hdf_file_path,
                                                  list_unique_indices_sorted,
                                                  gdf_cells_wsel)
-    
+
     # get the resolution of the ground DEM
     flt_pixel_width = fn_get_raster_resolution(str_dem_path)
-    
+
     # --- Read variables from config.ini ---
     # Create a ConfigParser object
     config = configparser.ConfigParser()
-    
+
     # Read the config.ini file
     config.read(str_config_file_path)
-    
+
     # ----
     # Get the variables in the [04_time_gradient] section
     if '04_time_gradient' in config:
         section = config['06_output_products']
-        
+
         # Read variables in the section
         str_output_crs = section.get('str_output_crs', '')
         flt_desired_res = section.getfloat('flt_desired_res', 0)
     else:
         print("[06_output_products] section not found in the config file.")
     # ----
-    
+
     # **********
     # HARED CODED MAX NUMBER OF PROCESSORS
     int_max_processors = 16
     # **********
     num_processors = (mp.cpu_count() - 1)
-    
+
     if num_processors > int_max_processors:
         num_processors = int_max_processors
-    
+
+    if opts.threads is not None:
+        num_processors = opts.threads
+
     # TODO -- 2025.01.09 - add tqdm progress bar to this multiprocessing.
     # Create a pool of workers
     with mp.Pool(processes=num_processors) as pool:
         # Use partial to pass additional arguments to process_wsel
         from functools import partial
         process_func = partial(
-            fn_process_wsel, 
+            fn_process_wsel,
             gdf_cells_wsel=gdf_cells_wsel,
             gdf_center_points=gdf_center_points,
             flt_pixel_width=flt_pixel_width,
@@ -891,6 +1306,21 @@ def fn_generate_depth_wsel_rasters(str_config_file_path,
             str_dem_path=str_dem_path
         )
         pool.map(process_func, list_wsel_col_names)
+
+    if aoi is None:
+        return None
+
+    # python engine AOI: clip each full map (the AOI baseline)
+    dict_columns = {}
+    for str_col in list_wsel_col_names:
+        dict_columns[str_col] = fn_postclip_python_products(str_col, aoi, str_aoi_output_crs,
+                                                            str_output_dir)
+    fn_write_mapping_manifest(str_output_dir, {
+        'engine': opts.engine, 'aoi': aoi.describe(), 'threads': num_processors, 'columns': dict_columns})
+    failed = [name for name, info in dict_columns.items() if info['status'] == 'failed']
+    if failed:
+        raise rust_mapping.RustMappingError(f'python AOI mapping failed for {len(failed)} profile(s): {failed}')
+    return dict_columns
 # ---------------------------------------------
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -944,6 +1374,7 @@ if __name__ == '__main__':
                         metavar='T/F',
                         type=fn_str_to_bool)
     
+    rust_mapping.fn_add_mapping_arguments(parser)
 
     args = vars(parser.parse_args())
     
@@ -959,7 +1390,8 @@ if __name__ == '__main__':
                                    str_dem_path,
                                    str_hydraulic_results_gpkg,
                                    str_output_dir,
-                                   b_print_output)
+                                   b_print_output,
+                                   **rust_mapping.fn_mapping_kwargs_from_args(args))
 
     flt_end_run = time.time()
     flt_time_pass = (flt_end_run - flt_start_run) // 1

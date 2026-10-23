@@ -1,0 +1,56 @@
+name: Optional mapping engine
+
+on:
+  pull_request:
+    paths:
+      - 'rust/step05/**'
+      - 'src/*05.py'
+      - 'src/ras2fim-2d.py'
+      - 'src/rust_mapping.py'
+      - 'src/mapping_aoi.py'
+      - 'tests/test_mapping_aoi.py'
+      - 'tests/test_rust_mapping.py'
+      - 'tests/test_mapping_run_safety.py'
+      - 'tests/test_benchmark_mapping.py'
+      - 'benchmarks/**'
+      - 'pyproject.toml'
+      - '.github/workflows/optional-mapping.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-interface:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install pinned application dependencies
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib, subprocess, sys, tomllib
+          dependencies = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['dependencies']
+          subprocess.check_call([sys.executable, '-m', 'pip', 'install', *dependencies, 'pytest'])
+          PY
+      - name: Test optional dispatch and spatial constraints
+        run: python -m pytest tests/test_mapping_aoi.py tests/test_rust_mapping.py tests/test_mapping_run_safety.py tests/test_benchmark_mapping.py -q
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - name: Format
+        run: cargo +1.99.1 fmt --manifest-path rust/step05/Cargo.toml -- --check
+      - name: Lint
+        run: cargo +1.99.1 clippy --locked --manifest-path rust/step05/Cargo.toml --all-targets -- -D warnings
+      - name: Test fixture-free Rust behavior
+        run: cargo +1.99.1 test --locked --manifest-path rust/step05/Cargo.toml --all-targets

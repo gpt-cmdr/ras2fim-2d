@@ -217,6 +217,19 @@ The output can be used as a library for rapidly retrieving flood inundation info
 
 ---
 
+# Optional Rust mapping engine
+
+Step 05 can use an optional Rust engine for batched raster mapping. Python remains the
+default, and existing runs do not require Rust. Both engines accept an output bounding box
+or polygon, including polygon holes and multipart geometries.
+
+See [Rust mapping and spatial constraints](docs/rust-mapping.md) for building the optional
+engine, selecting it in the CLI or configuration, supported inputs and the comparison scope.
+The [benchmark protocol](benchmarks/README.md) checks identical products before reporting
+performance; kernel-only timings are not catalog speedups.
+
+---
+
 # License
 
 See the repository license for terms of use.

@@ -42,6 +42,7 @@ from generate_depth_wsel_rasters_mp_05 import fn_generate_depth_wsel_rasters
 from generate_and_simplify_rasters_mp_06 import fn_extract_and_simplify_rasters
 from prep_for_netcdf_mp_07 import fn_prepare_netcdf_files
 from filter_netcdf_wsel_mp_08 import fn_filter_netcdf
+from rust_mapping import fn_add_mapping_arguments, fn_mapping_kwargs_from_args
 # ************************************************************
 
 
@@ -167,7 +168,11 @@ def fn_ras2fim_2d(str_source_folder,
                   tup_hecras_files_to_copy, 
                   str_config_file_path, 
                   str_output_dir,
-                  tup_step_range):
+                  tup_step_range,
+                  dict_step05_options=None):
+
+    # Optional Step 05 mapping engine / AOI keywords (see rust_mapping.py)
+    dict_step05_options = dict(dict_step05_options or {})
     
     
     # To supress the printing of Step output text
@@ -332,7 +337,8 @@ def fn_ras2fim_2d(str_source_folder,
                     str_terrain_path,
                     list_gpkg_filepath[int_count],
                     list_output_05_fullpath[int_count],
-                    b_print_output
+                    b_print_output,
+                    **dict_step05_options
                 )
                 pbar.update(1)  # Update progress bar after each iteration
         print("+-----------------------------------------------------------------+")
@@ -443,6 +449,7 @@ if __name__ == '__main__':
                         default='(0,8)',
                         type=fn_parse_tuple)
     
+    fn_add_mapping_arguments(parser)
 
     args = vars(parser.parse_args())
     
@@ -456,7 +463,8 @@ if __name__ == '__main__':
                   tup_hecras_files_to_copy, 
                   str_config_file_path, 
                   str_output_dir,
-                  tup_step_range)
+                  tup_step_range,
+                  fn_mapping_kwargs_from_args(args))
 
     flt_end_run = time.time()
     flt_time_pass = (flt_end_run - flt_start_run) // 1
