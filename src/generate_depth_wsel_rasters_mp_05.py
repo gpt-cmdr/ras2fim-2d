@@ -32,7 +32,6 @@ from scipy.spatial import ConvexHull
 import configparser
 import multiprocessing as mp
 
-from osgeo import gdal, gdalconst
 
 #import concurrent.futures
 import argparse
@@ -126,6 +125,7 @@ def fn_gdf_cell_centerpoints(hdf_file_path,list_unique_indices_sorted, gdf_cells
 
 # -------------------------
 def fn_get_raster_resolution(str_dem_path):
+    from osgeo import gdal, gdalconst
     
     # Get the resolution of the ground DEM
     # Open the raster file
@@ -512,6 +512,7 @@ def fn_create_raster_products(gdf_wsel_wet_cells_cleaned_pnt,
 
 # -------------------
 def fn_raster_subtraction(raster1_path, raster2_path, output_folder, str_wsel_col_name):
+    from osgeo import gdal, gdalconst
     
     list_created_rasters = []
     
@@ -604,6 +605,7 @@ def fn_fix_depth_raster(output_raster_path_06, str_dem_output_folder, str_wsel_c
 
 # -------------------
 def fn_raster_addition_wsel(ground_raster_path, depth_raster_path, output_folder,str_wsel_col_name):
+    from osgeo import gdal, gdalconst
 
     list_wsel_raster_path = []
     
@@ -1072,7 +1074,11 @@ def fn_generate_rasters_rust(str_hdf_file_path, str_dem_path, str_hydraulic_resu
     gdf_center_points = fn_gdf_cell_centerpoints(str_hdf_file_path,
                                                  list_unique_indices_sorted,
                                                  gdf_cells_wsel)
-    flt_pixel_width = fn_get_raster_resolution(str_dem_path)
+    if opts.engine == rust_mapping.ENGINE_RUST:
+        with rasterio.open(str_dem_path) as terrain:
+            flt_pixel_width = terrain.res[0]
+    else:
+        flt_pixel_width = fn_get_raster_resolution(str_dem_path)
     with rasterio.open(str_dem_path) as src:
         tup_terrain_bounds = tuple(src.bounds)
 
@@ -1257,7 +1263,11 @@ def _fn_generate_depth_wsel_rasters(str_config_file_path,
                                                  gdf_cells_wsel)
 
     # get the resolution of the ground DEM
-    flt_pixel_width = fn_get_raster_resolution(str_dem_path)
+    if opts.engine == rust_mapping.ENGINE_RUST:
+        with rasterio.open(str_dem_path) as terrain:
+            flt_pixel_width = terrain.res[0]
+    else:
+        flt_pixel_width = fn_get_raster_resolution(str_dem_path)
 
     # --- Read variables from config.ini ---
     # Create a ConfigParser object
