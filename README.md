@@ -10,7 +10,7 @@
 
 The workflow uses a "firehose" approach in which a series of constant-flow simulations is performed by applying flow to an internal HEC-RAS boundary condition named `Emitter1`. Flows are introduced near the upstream ends of the NWM NextGen hydrofabric catchments and the resulting inundation is clipped to the area associated with the corresponding NextGen `feature_id` (for example, `wb-2427467`).
 
-The resulting FIM library contains water-surface elevations (WSEL) indexed by flow rate (cfs). The output NetCDF files also contain the terrain used by HEC-RAS to compute the water-surface elevations.
+The resulting FIM library contains water-surface elevations (WSEL) indexed by flow rate (cfs). By default, the output NetCDF files also contain the model terrain. The optional healed-terrain mode embeds the restored mapping surface instead, while retaining the original hydraulic calculations.
 
 This project was developed in support of the National Weather Service under **Research Project NA22NWS4320003 / A25-0366-S018**.
 
@@ -27,7 +27,7 @@ This project was developed in support of the National Weather Service under **Re
 
 ## Technology
 
-- Python 3.8.12
+- Python 3.11
 - HEC-RAS 2D (v6.6 local Windows install; v6.5 containerized workers)
 - Docker
 - NetCDF
@@ -220,3 +220,11 @@ The output can be used as a library for rapidly retrieving flood inundation info
 # License
 
 See the repository license for terms of use.
+
+## Optional healed mapping terrain
+
+The Python 3.11 mapping runtime can call the Terrio-based FIM Commander healed-terrain
+builder directly. See [the integration guide](doc/healed_mapping_terrain.md) for installation,
+local REM library layout, configuration, QA and reproducible variant outputs. Healing is
+optional and disabled by default. It changes mapping terrain in Steps 5–7; HEC-RAS inputs
+and hydraulic runs continue to use their original terrain.

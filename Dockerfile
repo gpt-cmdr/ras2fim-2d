@@ -31,24 +31,32 @@ RUN conda install -n base -c conda-forge conda-libmamba-solver -y && \
 # All C-extension geo libs come from conda-forge so PROJ/GEOS/GDAL
 # stay consistent. No pip wheels for these = no PROJ conflicts.
 RUN conda install -y \
-        python=3.8.12 \
+        python=3.11 \
         gdal \
         rasterio \
-        fiona=1.8.22 \
-        geopandas=0.12.1 \
-        rioxarray=0.13.1 \
-        h5py=3.7.0 \
-        scipy=1.9.3 \
+        "fiona>=1.9" \
+        "geopandas>=0.14,<2" \
+        "rioxarray>=0.15,<1" \
+        "h5py>=3.8" \
+        "scipy>=1.11" \
         networkx=2.8.8 \
         matplotlib \
+        "numpy<3" \
+        "pandas<3" \
+        pip \
         netcdf4 \
         h5netcdf && \
     conda clean -a -y
 
 ENV PATH /opt/conda/bin:$PATH
 
+# Rust raster backend for the optional healed mapping stage.
+# The separately licensed FIM Commander wheel is installed by an authorized downstream build.
+RUN python -m pip install --no-deps terrio==0.5.0
+
 # --- Application code, directories, and global inputs ---
-RUN git clone https://github.com/andycarter-pe/ras2fim-2d.git /ras2fim-2d && \
+COPY . /ras2fim-2d
+RUN mkdir -p /ras2fim-2d && \
     mkdir /global_input /model_input /model_output && \
     wget https://ras2fim-2d-global-inputs.s3.us-east-1.amazonaws.com/LimitingDischarge.csv \
         -O /global_input/LimitingDischarge.csv && \

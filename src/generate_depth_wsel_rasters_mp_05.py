@@ -810,6 +810,12 @@ def fn_generate_depth_wsel_rasters(str_config_file_path,
                                    str_output_dir,
                                    b_print_output):
     
+    # Mapping-only override: never pass this terrain back to the hydraulic solver.
+    from healed_mapping_terrain import mapping_terrain, bind_mapping_terrain
+    terrain_cache = os.path.join(os.path.dirname(str_output_dir), "_healed_terrain")
+    str_dem_path, terrain_record = mapping_terrain(str_config_file_path, str_dem_path, terrain_cache)
+    bind_mapping_terrain(str_output_dir, terrain_record)
+
     # supress all warnings
     warnings.filterwarnings("ignore", category=UserWarning )
     

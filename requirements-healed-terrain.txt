@@ -1,0 +1,5 @@
+# Optional companion integration, Python 3.11+. Install into the prepared geo environment.
+# FIM Commander is separately licensed; authorized repository access is required.
+# No companion source is copied into this BSD-licensed repository.
+fim-commander @ git+https://github.com/CLB-Engineering-Corporation/fim-commander@c0aefd016a66de22e19258cf654bfd65e7d0890d
+terrio==0.5.0
