@@ -43,7 +43,9 @@ flt_datum_tolerance_ft = 0.5
 `<district>/dsm/<section>.tif`. Preserve this layout when mirroring the public
 [TxDOT Road Elevation Model](https://web.corral.tacc.utexas.edu/nfiedata/road3d/).
 The stage uses the 3 m **maintenance-section DSMs**, not the district `dsm_cog.tif`
-mosaics, COPC point clouds, HAND products or bare-earth lidar DEMs. A missing or
+mosaics, COPC point clouds, HAND products or bare-earth lidar DEMs. The June 2025
+district COGs are resampled to EPSG:3857 with 4.777 m map pixels (about 4.1 m on
+the ground near latitude 30 degrees); retain the native 3 m section grid for healing. A missing or
 empty library is an error; a valid library with no road in this model's footprint
 produces unchanged model terrain through the same builder.
 
