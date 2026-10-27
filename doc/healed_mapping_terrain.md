@@ -5,7 +5,8 @@
 Steps 5–7 can use a restored ground surface for depth, wet/dry mapping, and the
 terrain embedded in the NetCDF catalog. Hydraulics, source HDFs, and original
 terrain remain unchanged. The bundled healer is BSD-3-Clause code contributed by
-CLB Engineering, adapted from FIM Commander; no private package is required.
+CLB Engineering, adapted from FIM Commander (see [`NOTICE`](../NOTICE)); no private
+package is required.
 
 The active Dockerfile and conda environment use Python 3.11. The Dockerfile copies
 this checkout, rather than cloning main, so feature builds contain their changes.
@@ -288,7 +289,8 @@ provenance. Full real-model catalog regression remains a separate qualification.
 
 Code provenance: CLB Engineering's FIM Commander revision
 `c0aefd016a66de22e19258cf654bfd65e7d0890d`, adapted with permission and contributed
-under this repository's BSD-3-Clause license. The public mapping dependency carries
+under the BSD-3-Clause license; copyright and the list of contributed files are in
+[`NOTICE`](../NOTICE). `LICENSE.md` is unchanged. The public mapping dependency carries
 its own notices, including attribution to Andy's Step05 implementation. REM data:
 Liu et al. (2025), [DOI 10.13139/ORNLNCCS/2574440](https://doi.org/10.13139/ORNLNCCS/2574440),
 CC BY 4.0. Mounted data are not included in the code/container license.

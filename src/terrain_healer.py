@@ -1,7 +1,7 @@
 """Raise-only road restoration for mapping terrain; does not modify hydraulic inputs.
 
 Copyright (c) 2026, CLB Engineering Corporation.
-Distributed under the BSD-3-Clause license in LICENSE.md.
+Distributed under the BSD-3-Clause license; see NOTICE.
 Adapted with permission from FIM Commander revision c0aefd016a66de22e19258cf654bfd65e7d0890d.
 REM elevations are metres; vertical datum is assumed NAVD88 and checked diagnostically.
 """

@@ -1,7 +1,6 @@
 BSD 3-Clause License
 
 Copyright (c) 2026, The University of Texas at Austin
-Copyright (c) 2026, CLB Engineering Corporation (terrain healing contributions)
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without

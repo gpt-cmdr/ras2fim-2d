@@ -229,3 +229,4 @@ independent and opt-in. See [the integration guide](doc/healed_mapping_terrain.m
 for configuration, container builds and operation, QA, catalog defaults, and the
 native sloping catalog option. HEC-RAS inputs and hydraulic runs keep their
 original terrain. No FIM Commander package or private repository is required.
+The contributed code is BSD-3-Clause, copyright CLB Engineering Corporation; see [NOTICE](NOTICE).

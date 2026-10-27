@@ -1,6 +1,6 @@
 """Select local 3 m TxDOT REM section DSMs for a model footprint.
 
-Copyright (c) 2026, CLB Engineering Corporation. BSD-3-Clause; see LICENSE.md.
+Copyright (c) 2026, CLB Engineering Corporation. BSD-3-Clause; see NOTICE.
 Adapted with permission from FIM Commander c0aefd016a66de22e19258cf654bfd65e7d0890d.
 """
 
