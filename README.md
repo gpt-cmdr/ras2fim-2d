@@ -227,6 +227,13 @@ The Python 3.14 postprocessing container includes a standalone Terrio terrain he
 and the public RasCommander Rust mapping engine. Healing and engine selection are
 independent and opt-in. See [the integration guide](doc/healed_mapping_terrain.md)
 for configuration, container builds and operation, QA, catalog defaults, and the
-native sloping catalog option. HEC-RAS inputs and hydraulic runs keep their
+native sloping catalog option.
+
+Steps 05-07 changes are in new `_v2` files; `ras2fim-2d.py` selects them by three
+imports, and Andy's original step files are unchanged. Published image (Python 3.14):
+
+```sh
+docker pull ghcr.io/gpt-cmdr/ras2fim-2d@sha256:9ee963e954fea8c87fb9df18693038576be26d2cfc0ddbf50ce676244e4ab5c3
+``` HEC-RAS inputs and hydraulic runs keep their
 original terrain. No FIM Commander package or private repository is required.
 The contributed code is BSD-3-Clause, copyright CLB Engineering Corporation; see [NOTICE](NOTICE).
