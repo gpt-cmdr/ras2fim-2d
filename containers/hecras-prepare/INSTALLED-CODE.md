@@ -32,7 +32,7 @@ the installed Windows library source is `9e4217713e954236b0c16023e1815c6f2b7a530
 The external wheel, installed HEC-RAS runtime and registry data are not in Git.
 
 See [How to Re-Create this Container](PREPARATION.md) for the build procedure and
-[the inventory](runtime-inventory-current.json) for installed dependencies.
+[the inventory](https://github.com/gpt-cmdr/ras2fim-2d/releases/download/hecras-prepare-evidence-20261027/runtime-inventory-current.json) (release attachment, SHA-256 `67912337f7e00ab8ba65b19fdd9161ea61d404df0243a9621f69741e8e3b2dfd`) for installed dependencies.
 
 [rc]: https://rascommander.info/ras/
 [ras-prj]: https://github.com/gpt-cmdr/ras-commander/blob/9e4217713e954236b0c16023e1815c6f2b7a5309/ras_commander/RasPrj.py

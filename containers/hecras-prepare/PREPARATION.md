@@ -263,7 +263,7 @@ These registration records describe the prepared profiles and can include instal
 | Python 3.11.9 Utility Scripts (64-bit) | `3.11.9150.0` |
 | Python 3.11.9 pip Bootstrap (64-bit) | `3.11.9150.0` |
 
-The [complete recorded inventory](runtime-inventory-current.json) includes all
+The [complete recorded inventory](https://github.com/gpt-cmdr/ras2fim-2d/releases/download/hecras-prepare-evidence-20261027/runtime-inventory-current.json) (release attachment, SHA-256 `67912337f7e00ab8ba65b19fdd9161ea61d404df0243a9621f69741e8e3b2dfd`) includes all
 Linux packages and Windows dependencies, custom code identities, and runtime settings.
 
 ### Custom code retained in the runtime

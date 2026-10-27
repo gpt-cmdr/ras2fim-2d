@@ -137,9 +137,15 @@ checks the receipt before staging the generated files.
 Follow [How to Re-Create this Container](PREPARATION.md) to export a finalized
 Wine profile and build with the external `hecras_runtime` context. The build
 currently depends on retained installed profiles; a complete empty-prefix
-installation procedure remains unfinished. The [inventory](runtime-inventory-current.json)
+installation procedure remains unfinished. The [inventory](https://github.com/gpt-cmdr/ras2fim-2d/releases/download/hecras-prepare-evidence-20261027/runtime-inventory-current.json) (release attachment, SHA-256 `67912337f7e00ab8ba65b19fdd9161ea61d404df0243a9621f69741e8e3b2dfd`)
 records installed software, and [release verification](https://github.com/gpt-cmdr/ras-commander/blob/codex/container-precompute-linux/containers/hecras-unsteady/RELEASE-CURRENT.md)
 records exact image identities and test results.
+
+The machine-generated evidence files (runtime inventories and the 2026-09-12
+[qualification record](https://github.com/gpt-cmdr/ras2fim-2d/releases/download/hecras-prepare-evidence-20261027/validation-current.json),
+SHA-256 `cceed7121f67eb58e8a40b99631459e033b6421d4775e58a0a6432d09d585629`) are attached to the
+[hecras-prepare-evidence-20261027](https://github.com/gpt-cmdr/ras2fim-2d/releases/tag/hecras-prepare-evidence-20261027)
+release rather than kept in the repository. Nothing here loads them at run time.
 
 Docker Hub documentation: [6.5](dockerhub/6.5.md),
 [6.6](dockerhub/6.6.md), [7.0.1](dockerhub/7.0.1.md).

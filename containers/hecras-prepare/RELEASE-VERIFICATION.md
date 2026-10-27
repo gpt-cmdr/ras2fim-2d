@@ -163,7 +163,7 @@ and [the reconstruction guide](PREPARATION.md). Runtime layers and vendor notice
 were preserved. No installer, Wine profile, model or solver output was added to Git.
 
 External evidence is retained under `/scratch/ras2fim-hecras/reliability-20260910`.
-The current software inventory is [runtime-inventory-20260910.json](runtime-inventory-20260910.json).
+The current software inventory is [runtime-inventory-20260910.json](https://github.com/gpt-cmdr/ras2fim-2d/releases/download/hecras-prepare-evidence-20261027/runtime-inventory-20260910.json) (release attachment, SHA-256 `f01ff490cfc473b7698972aa1b79998c99d00e4049d235d96ceae242789cffdc`).
 
 ## Published image identities
 

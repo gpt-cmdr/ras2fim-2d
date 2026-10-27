@@ -273,7 +273,7 @@ Desktop qualification did not pass a `/dev/ntsync` device.
 [Run instructions](README.md) provide the complete Docker command.
 [How to Re-Create this Container](PREPARATION.md) covers installation, packaging,
 software inventory, and build verification separately from this operating guide.
-The [current runtime inventory](runtime-inventory-current.json) lists installed packages, source identities and runtime paths for all three versions.
+The [current runtime inventory](https://github.com/gpt-cmdr/ras2fim-2d/releases/download/hecras-prepare-evidence-20261027/runtime-inventory-current.json) (release attachment, SHA-256 `67912337f7e00ab8ba65b19fdd9161ea61d404df0243a9621f69741e8e3b2dfd`) lists installed packages, source identities and runtime paths for all three versions.
 The [release verification record](https://github.com/gpt-cmdr/ras-commander/blob/codex/container-precompute-linux/containers/hecras-unsteady/RELEASE-CURRENT.md) contains the test evidence.
 
 | Review file | Responsibility |
