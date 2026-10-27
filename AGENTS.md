@@ -1,38 +1,46 @@
-# Agent operating instructions
+# Agent rules for ras2fim-2d
+Author and maintainer: Andy Carter, PE (Center for Water and the Environment, UT Austin).
+These conventions are deliberate. Match them; do not "modernize" them.
 
-## All-version TCU authorization
+## Pipeline
+- Steps are scripts named <verb>_<noun>_NN.py; sub-steps use letters (02b), _mp_ marks multiprocessing.
+- ras2fim-2d.py imports fn_<name>_NN from each step and runs a step range (-s "(start,end)").
+- Steps communicate through numbered output folders (00_..., 01_...). Keep that layout.
+- A new version of a step is a new file (_v2, _v3). Do not edit the old version in place unless asked.
+- Every step must still run standalone through its own __main__ / argparse block.
 
-On 2026-09-11, the user explicitly authorized accepting the HEC-RAS Terms and
-Conditions for Use for all versions, including legacy releases used to
-qualify ras-commander. This covers controlled CLB runtime profiles and
-qualification hosts, including explicit `RasTcu.accept()` calls for selected
-installed versions. Retain version, runtime identity, acceptance method and
-before/after status outside Git. Record API registry acceptance accurately;
-do not describe it as a vendor GUI interaction. Preserve original profiles
-and unrelated registry state. This does not expand the published image
-versions beyond the matching releases authorized below.
+## Code style
+- File header: project, script number, "Created by: Andy Carter, PE", Created - YYYY.MM.DD.
+  When you change a file, add: "# Revised - YYYY.MM.DD -- <what changed>".
+- Names: str_, int_, flt_, b_, list_, dict_, tup_, gdf_, df_, ds_, arr_ prefixes; functions fn_snake_case.
+- Frame each function with a comment rule line, as the surrounding file does.
+- Procedural functions. No classes, type hints, dataclasses, or logging module unless asked.
+- Output with print: keep the banner, "---(i) LABEL:" argument lines, the tqdm bar_format already
+  used in the file, and the final "Compute Time:" line.
+- argparse: short flags, dest names with prefixes, help strings starting REQUIRED: / OPTIONAL: ... Default:.
 
-## HEC-RAS runtime profiles
+## Configs
+- INI via configparser, one section per step ([02_copy_geom]). Several environment variants exist
+  (config_global.ini, config_global_windows.ini, ...). A key change goes into every variant.
+- Keep commented-out old values. Preserve each file's existing line endings.
 
-When the official HEC-RAS installer or the installed application's first launch
-displays the Terms and Conditions for Use while an agent is creating a
-controlled runtime profile, the agent is authorized to select `I agree to the
-above Terms and Conditions for Use` on the user's behalf. Complete both
-acceptances when both prompts appear. Record the HEC-RAS version, installer
-hash, prompt text, and acceptances in the external run evidence.
+## Do not
+- Rename existing keys, functions, files, or output names, even misspelled ones; they are interfaces.
+- Reformat, reorder imports, or tidy code you were not asked to change.
+- Add dependencies, change the conda env / Python version, or alter the Dockerfile without asking.
+- Remove "Created by" credit or the CWE/UT banner.
+- Commit or push. Propose the change and a short commit message; Andy commits.
 
-Keep HEC-RAS installers, installed runtimes, Wine prefixes, model data, and
-solver results outside Git. The user explicitly authorized publishing prepared
-HEC-RAS 6.5 and 6.6 Wine runtime profiles inside their matching Docker Hub
-preprocessing images on 2026-09-09. Supply these profiles through an external
-build context and retain vendor terms and notices. Keep temporary installer
-downloads, personal files, model data, and solver results outside images.
-Verify runtime versions and artifact hashes, and test preprocessing with the
-bundled runtime before publishing. Preserve original profiles and run evidence.
+## Checking work
+- There is no unit test suite. Verify by running the sample data and inspecting outputs.
+  Say exactly what you ran and what you saw; if you could not run it, say so.
 
-The user authorized preparing HEC-RAS 7.0.1 and accepting its TCU on
-2026-09-09, then explicitly authorized publishing the 7.0.1 image on
-2026-09-11. This approval covers the matching Wine preprocessing and native
-Linux unsteady images for the two-stage ras-commander workflow. Test the
-matching 7.0.1 runtimes before publication and retain vendor notices and the
-runtime, build, and qualification evidence outside Git.
+## Linux/Wine preprocessing container (contributed by CLB Engineering)
+- containers/hecras-prepare/ builds the optional image that runs step 02b HEC-RAS preprocessing on a
+  Linux Docker host. src/stage_hecras_for_linux_wine_02b.py drives it. Docs: containers/hecras-prepare/README.md.
+- It is used only when [03_run_hec_ras] b_prepare_on_linux_wine = True. The default path,
+  stage_hecras_for_linux_v66_02b.py on the Windows machine, must keep working unchanged.
+- The container code is CLB-maintained and written in a different style. Do not restyle it, and do not
+  copy that style into src/.
+- tests/ covers only this container path (python -m pytest tests). Keep HEC-RAS installers, Wine
+  profiles, model data and results out of Git.
