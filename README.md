@@ -27,7 +27,7 @@ This project was developed in support of the National Weather Service under **Re
 
 ## Technology
 
-- Python 3.11
+- Python 3.14
 - HEC-RAS 2D (v6.6 local Windows install; v6.5 containerized workers)
 - Docker
 - NetCDF
@@ -223,7 +223,7 @@ See the repository license for terms of use.
 
 ## Optional healed mapping terrain and accelerated mapping
 
-The Python 3.11 postprocessing container includes a standalone Terrio terrain healer
+The Python 3.14 postprocessing container includes a standalone Terrio terrain healer
 and the public RasCommander Rust mapping engine. Healing and engine selection are
 independent and opt-in. See [the integration guide](doc/healed_mapping_terrain.md)
 for configuration, container builds and operation, QA, catalog defaults, and the

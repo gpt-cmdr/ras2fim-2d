@@ -11,6 +11,7 @@
 # -- Center for Water and the Environment
 # -- University of Texas at Austin
 # Date: 2026-09-07
+# Revised: 2026-10-27 -- Python 3.14 env; optional healed terrain / mapping engine (CLB Engineering)
 # License: BSD 3-Clause License
 # ------------------------------------------------------------------------
 FROM continuumio/miniconda3:latest
@@ -32,7 +33,7 @@ RUN conda install -n base --override-channels -c conda-forge conda-libmamba-solv
 # stay consistent. No pip wheels for these = no PROJ conflicts.
 # Keep the base image Python/conda tools separate from the application runtime.
 RUN conda create -p /opt/ras2fim-env --override-channels -c conda-forge -y \
-        python=3.11 \
+        python=3.14 \
         gdal \
         rasterio \
         "fiona>=1.9" \

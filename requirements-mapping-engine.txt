@@ -1,4 +1,4 @@
-# Public accelerated mapper; install in the prepared Python 3.11 geo environment.
+# Public accelerated mapper; install in the prepared Python 3.14 geo environment.
 ras-commander[fim] @ https://github.com/gpt-cmdr/ras-commander/archive/777c7746ceb35fc3b1c29d3718935c9013ae009c.tar.gz
 ras-commander-fast-map==0.8.0
 ras-commander-fast-hdf==0.2.3

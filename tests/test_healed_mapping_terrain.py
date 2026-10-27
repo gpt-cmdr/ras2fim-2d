@@ -285,12 +285,12 @@ def test_entrypoint_hooks_wire_one_surface_through_steps_5_6_7(tmp_path, monkeyp
     assert calls[-1][2] == record
 
 
-def test_active_runtime_files_select_python_311():
-    assert "python=3.11" in (ROOT / "Dockerfile").read_text()
-    assert "python=3.11" in (ROOT / "environment_ras2fim2d.yml").read_text()
+def test_active_runtime_files_select_python_314():
+    assert "python=3.14" in (ROOT / "Dockerfile").read_text()
+    assert "python=3.14" in (ROOT / "environment_ras2fim2d.yml").read_text()
     for path in (ROOT / "src").glob("*.py"):
         ast.parse(
-            path.read_text(encoding="utf8"), filename=str(path), feature_version=(3, 11)
+            path.read_text(encoding="utf8"), filename=str(path), feature_version=(3, 14)
         )
 
 

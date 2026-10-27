@@ -68,7 +68,7 @@ def _load_builder():
         from terrio import __version__
     except ImportError as exc:
         raise MappingTerrainError(
-            "Healing requires Python 3.11+ and requirements-healed-terrain.txt"
+            "Healing requires Python 3.14 and requirements-healed-terrain.txt"
         ) from exc
     if SCHEMA != "ras2fim-2d-healed-terrain-qa/v1":
         raise MappingTerrainError(

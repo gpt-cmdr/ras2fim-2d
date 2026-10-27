@@ -11,7 +11,7 @@ of the repository's version metadata. Large REM datasets remain mounted inputs.
 
 Qualification procedure:
 
-- Run all standalone tests on Windows and inside the actual Python 3.11 Linux image.
+- Run all standalone tests on Windows and inside the actual Python 3.14 Linux image.
 - Check Terrio/Rasterio exact synthetic sampling, raise-only/NoData behavior,
   datum failure, cache integrity, and Steps5-7 terrain/method provenance.
 - Check real Rust Step05 arithmetic and native complete-profile/window preparation,

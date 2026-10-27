@@ -8,7 +8,7 @@ terrain remain unchanged. The bundled healer is BSD-3-Clause code contributed by
 CLB Engineering, adapted from FIM Commander (see [`NOTICE`](../NOTICE)); no private
 package is required.
 
-The active Dockerfile and conda environment use Python 3.11. The Dockerfile copies
+The active Dockerfile and conda environment use Python 3.14 (conda-forge). The Dockerfile copies
 this checkout, rather than cloning main, so feature builds contain their changes.
 `Dockerfile_old` is historical and does not provide this feature.
 
@@ -108,7 +108,7 @@ The image includes the application source, healer, Terrio 0.5.0,
 The source commit matters: the PyPI 0.110.1 release does not include this API.
 No new Rust build is required. The public source-archive URL is pinned in
 `requirements-mapping-engine.txt` and the conda environment. Scientific and
-native GIS libraries are solved for Python 3.11 from conda-forge in a separate
+native GIS libraries are solved for Python 3.14 from conda-forge in a separate
 application environment, avoiding conflicts with the base image's conda Python. No Rust compiler,
 private credentials, FIM Commander runtime, or HEC-RAS installation is required
 for the healer or accelerated Step05 mapping. The image retains the existing
@@ -144,7 +144,7 @@ Continue the existing Steps 6–7 against the same output tree and configuration
 The original terrain argument stays the original DEM; Step7 resolves and verifies
 the same cached healed selection, rather than building another variant.
 
-For an existing Python 3.11 GIS environment instead of Docker:
+For an existing Python 3.14 GIS environment instead of Docker:
 
 ```sh
 python -m pip install -r requirements-healed-terrain.txt \
