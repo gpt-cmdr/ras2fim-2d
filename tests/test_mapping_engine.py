@@ -21,9 +21,17 @@ def test_selection_defaults_and_native_mode(tmp_path):
     config.write_text("[05_raster_engine]\nstr_mapping_engine=unknown\n")
     with pytest.raises(ValueError, match="str_mapping_engine"):
         engine.mapping_engine(config)
+    # Legacy writes no marker; existing unmarked rasters still block a method change.
     engine.bind_mapping_engine(tmp_path / "output", "legacy")
-    with pytest.raises(ValueError, match="engine changed"):
+    assert not (tmp_path / "output" / "mapping_engine.json").exists()
+    (tmp_path / "output").mkdir()
+    (tmp_path / "output" / "09_wsel.tif").write_bytes(b"")
+    with pytest.raises(ValueError, match="no engine provenance"):
         engine.bind_mapping_engine(tmp_path / "output", "fast_step05")
+    # A marked non-legacy folder rejects legacy.
+    engine.bind_mapping_engine(tmp_path / "marked", "fast_step05")
+    with pytest.raises(ValueError, match="engine changed"):
+        engine.bind_mapping_engine(tmp_path / "marked", "legacy")
 
 
 def test_real_rust_mapping_preserves_names_and_uses_selected_ground(

@@ -11,6 +11,21 @@ The active Dockerfile and conda environment use Python 3.11. The Dockerfile copi
 this checkout, rather than cloning main, so feature builds contain their changes.
 `Dockerfile_old` is historical and does not provide this feature.
 
+## Steps 5–7 version 2
+
+The changes are in new files beside Andy's originals, which are unchanged:
+
+- `src/generate_depth_wsel_rasters_mp_05_v2.py`
+- `src/generate_and_simplify_rasters_mp_06_v2.py`
+- `src/prep_for_netcdf_mp_07_v2.py`
+
+Each is a copy of the original with a few added lines, the same entry function
+name and arguments, and a `Revised - 2026.10.27 -- v2` header line.
+`src/ras2fim-2d.py` selects them with three imports; to return to the originals,
+change those three imports back (drop `_v2`). With the shipped `legacy` / `model`
+settings, the v2 steps write the same files as the originals and add no NetCDF
+attributes.
+
 ## Configuration and catalog defaults
 
 The existing function arguments, CLI flags, product names, and default mapping
@@ -119,7 +134,7 @@ docker run --rm --cpus=8 --memory=16g \
   -v /host/section-dsms:/rem:ro \
   -v /host/study:/study:ro -v /host/output:/output \
   ras2fim-2d:healed-terrio \
-  python generate_depth_wsel_rasters_mp_05.py \
+  python generate_depth_wsel_rasters_mp_05_v2.py \
   -c /study/config.ini -i /study/plan.p01.hdf -t /study/model.tif \
   -g /study/hydraulic_results.gpkg -o /output/05_large_terrain/run
 ```
@@ -187,11 +202,14 @@ review full-extent road crossings, bridges, channels and corridor edges. Verify
 source resolution and vertical compatibility before accepting a catalog. Process
 success and raise-only arithmetic do not establish hydraulic acceptance.
 
-Step5 writes terrain and engine markers. Step6 carries both selections to its
-shared output folder. Step7 checks that identity before embedding the selected
-terrain, checks its configured engine against Step6, and records `mapping_engine`,
-`terrain_kind`, `mapping_terrain_sha256`, and
-`mapping_terrain_approval` in NetCDF attributes. Source and cache artifacts are
+Step5 writes `mapping_terrain.json` when terrain is healed and `mapping_engine.json`
+when the engine is not `legacy`; the default writes neither, and an unmarked folder
+reads as `legacy` / `model`. Step6 carries both selections to its shared output
+folder. Step7 checks that identity before embedding the selected terrain and checks
+its configured engine against Step6. When either option is not the default, Step7
+adds NetCDF attributes numbered after `10_still_needed_values`: `11_terrain_kind`,
+`12_mapping_engine`, and for healed terrain `13_mapping_terrain_sha256` and
+`14_mapping_terrain_approval`. Source and cache artifacts are
 hashed; changed cache files fail validation. Failed datum attempts retain
 `failed-*` rasters, HTML and QA without a reusable success marker.
 

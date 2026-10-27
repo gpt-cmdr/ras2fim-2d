@@ -810,19 +810,6 @@ def fn_generate_depth_wsel_rasters(str_config_file_path,
                                    str_output_dir,
                                    b_print_output):
     
-    from mapping_engine import mapping_engine, bind_mapping_engine, map_catalog
-    selected_engine = mapping_engine(str_config_file_path)
-    bind_mapping_engine(str_output_dir, selected_engine)
-
-    # Mapping-only override: never pass this terrain back to the hydraulic solver.
-    from healed_mapping_terrain import mapping_terrain, bind_mapping_terrain
-    terrain_cache = os.path.join(os.path.dirname(str_output_dir), "_healed_terrain")
-    str_dem_path, terrain_record = mapping_terrain(str_config_file_path, str_dem_path, terrain_cache)
-    bind_mapping_terrain(str_output_dir, terrain_record)
-    if selected_engine != "legacy":
-        return map_catalog(str_config_file_path, str_hdf_file_path, str_dem_path,
-                               str_hydraulic_results_gpkg, str_output_dir)
-
     # supress all warnings
     warnings.filterwarnings("ignore", category=UserWarning )
     

@@ -215,7 +215,15 @@ def _hook(filename, function, stop_at):
             break
         prefix.append(statement)
     node.body = prefix
-    module = ast.fix_missing_locations(ast.Module(body=[node], type_ignores=[]))
+    # The v2 hooks are imported in the file's import block; rerun those imports
+    # here so that monkeypatched helpers are the ones bound by the entrypoint.
+    hooks = [
+        n
+        for n in tree.body
+        if isinstance(n, ast.ImportFrom)
+        and n.module in ("mapping_engine", "healed_mapping_terrain")
+    ]
+    module = ast.fix_missing_locations(ast.Module(body=hooks + [node], type_ignores=[]))
     namespace = {
         "os": os,
         "warnings": SimpleNamespace(filterwarnings=lambda *a, **k: None),
@@ -243,7 +251,7 @@ def test_entrypoint_hooks_wire_one_surface_through_steps_5_6_7(tmp_path, monkeyp
         lambda out, rec: calls.append(("bind", out, rec)),
     )
     fn, ns = _hook(
-        "generate_depth_wsel_rasters_mp_05.py",
+        "generate_depth_wsel_rasters_mp_05_v2.py",
         "fn_generate_depth_wsel_rasters",
         "gpd.read_file",
     )
@@ -258,7 +266,7 @@ def test_entrypoint_hooks_wire_one_surface_through_steps_5_6_7(tmp_path, monkeyp
     assert calls[0][1] == "model.tif" and calls[1][2] == record
     monkeypatch.setattr(terrain, "step5_mapping_record", lambda path: record)
     fn, ns = _hook(
-        "generate_and_simplify_rasters_mp_06.py",
+        "generate_and_simplify_rasters_mp_06_v2.py",
         "fn_extract_and_simplify_rasters",
         "configparser.ConfigParser",
     )
@@ -270,7 +278,7 @@ def test_entrypoint_hooks_wire_one_surface_through_steps_5_6_7(tmp_path, monkeyp
         lambda out, rec: calls.append(("check", out, rec)),
     )
     fn, ns = _hook(
-        "prep_for_netcdf_mp_07.py", "fn_prepare_netcdf_files", "gpd.read_file"
+        "prep_for_netcdf_mp_07_v2.py", "fn_prepare_netcdf_files", "gpd.read_file"
     )
     fn("config", "model.tif", str(tmp_path), False)
     assert calls[-2][3] == {"allow_build": False}
@@ -289,12 +297,11 @@ def test_active_runtime_files_select_python_311():
 def test_netcdf_metadata_distinguishes_healed_from_model(tmp_path):
     simple = tmp_path / "simple"
     simple.mkdir()
-    assert terrain.netcdf_mapping_metadata(simple / "01_wsel_rasters") == {
-        "terrain_kind": "model",
-        "mapping_engine": "legacy",
-    }
+    # Default legacy / model adds no attributes, so v2 NetCDF files match v1.
+    assert terrain.netcdf_mapping_metadata(simple / "01_wsel_rasters") == {}
     terrain.bind_mapping_terrain(simple, {"input_sha256": "selected"})
     metadata = terrain.netcdf_mapping_metadata(simple / "01_wsel_rasters")
-    assert metadata["terrain_kind"] == "healed_mapping_only"
-    assert metadata["mapping_terrain_sha256"] == "selected"
-    assert metadata["mapping_terrain_approval"] == "not_approved"
+    assert metadata["11_terrain_kind"] == "healed_mapping_only"
+    assert metadata["12_mapping_engine"] == "legacy"
+    assert metadata["13_mapping_terrain_sha256"] == "selected"
+    assert metadata["14_mapping_terrain_approval"] == "not_approved"

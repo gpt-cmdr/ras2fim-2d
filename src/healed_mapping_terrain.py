@@ -294,18 +294,25 @@ def check_netcdf_mapping_inputs(step6_dir, record):
 
 
 def netcdf_mapping_metadata(simple_wsel_dir):
-    """Global NetCDF attributes describing the terrain embedded by Step 7."""
+    """Global NetCDF attributes describing the terrain embedded by Step 7.
+
+    None are added for the default legacy engine with model terrain, so default
+    NetCDF files match v1. Otherwise the keys continue the existing numbering
+    after Step 8's 10_still_needed_values.
+    """
     from mapping_engine import recorded_mapping_engine
 
     engine = recorded_mapping_engine(Path(simple_wsel_dir).parent)
     record = step5_mapping_record(Path(simple_wsel_dir).parent)
     if record is None:
-        return {"terrain_kind": "model", "mapping_engine": engine}
+        if engine == "legacy":
+            return {}
+        return {"11_terrain_kind": "model", "12_mapping_engine": engine}
     return {
-        "terrain_kind": "healed_mapping_only",
-        "mapping_engine": engine,
-        "mapping_terrain_sha256": record["input_sha256"],
-        "mapping_terrain_approval": "not_approved",
+        "11_terrain_kind": "healed_mapping_only",
+        "12_mapping_engine": engine,
+        "13_mapping_terrain_sha256": record["input_sha256"],
+        "14_mapping_terrain_approval": "not_approved",
     }
 
 

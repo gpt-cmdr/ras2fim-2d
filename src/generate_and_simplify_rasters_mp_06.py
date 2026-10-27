@@ -375,12 +375,6 @@ def fn_extract_and_simplify_rasters(str_config_file_path,
                                     str_output_dir,
                                     b_print_output):
     
-    from mapping_engine import bind_mapping_engine, recorded_mapping_engine
-    bind_mapping_engine(str_output_dir, recorded_mapping_engine(str_path_large_dem_folder))
-    from healed_mapping_terrain import step5_mapping_record, bind_mapping_terrain
-    terrain_record = step5_mapping_record(str_path_large_dem_folder)
-    bind_mapping_terrain(str_output_dir, terrain_record)
-
     # supress all warnings
     warnings.filterwarnings("ignore", category=UserWarning )
     

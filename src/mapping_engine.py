@@ -35,6 +35,10 @@ def bind_mapping_engine(output_dir, engine):
         if json.loads(marker.read_text())["engine"] != engine:
             raise MappingTerrainError("Mapping engine changed; use a new output folder")
         return
+    # Legacy writes no marker, so default v2 output folders are identical to v1.
+    # An unmarked folder already reads as legacy (recorded_mapping_engine).
+    if engine == "legacy":
+        return
     if engine != "legacy" and any(folder.rglob("*.tif")):
         raise MappingTerrainError(
             "Existing products have no engine provenance; use a new output folder"

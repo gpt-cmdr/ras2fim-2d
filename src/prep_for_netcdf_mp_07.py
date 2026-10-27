@@ -351,8 +351,6 @@ def fn_create_netcdf(list_align_rasters, str_type, str_id, str_input_dir, str_te
     ds_out.attrs['05_institution'] = 'University of Texas at Austin'
     ds_out.attrs['06_history'] = f"Created on {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     ds_out.attrs['07_raster_folder'] = str_input_dir
-    from healed_mapping_terrain import netcdf_mapping_metadata
-    ds_out.attrs.update(netcdf_mapping_metadata(str_input_dir))
 
     # re-assert the CRS so the spatial_ref grid-mapping variable is written
     if crs_out is not None:
@@ -553,16 +551,6 @@ def fn_prepare_netcdf_files(str_config_file_path,
                             str_output_dir,
                             b_print_output):
     
-    # The embedded NetCDF terrain must be the same surface used for Step 5 depths.
-    from healed_mapping_terrain import mapping_terrain, check_netcdf_mapping_inputs
-    model_terrain = os.path.join(str_output_dir, '02_model_copies', 'source_terrain', str_terrain_filename)
-    terrain_cache = os.path.join(str_output_dir, "05_large_terrain", "_healed_terrain")
-    str_terrain_dem_path, terrain_record = mapping_terrain(
-        str_config_file_path, model_terrain, terrain_cache, allow_build=False)
-    check_netcdf_mapping_inputs(os.path.join(str_output_dir, '06_simple_rasters'), terrain_record)
-    from mapping_engine import check_catalog_engine
-    check_catalog_engine(str_config_file_path, os.path.join(str_output_dir, '06_simple_rasters'))
-
     # supress all warnings
     warnings.filterwarnings("ignore", category=UserWarning )
     
@@ -593,6 +581,7 @@ def fn_prepare_netcdf_files(str_config_file_path,
     
     str_simple_raster_path = os.path.join(str_output_dir, '06_simple_rasters', '01_wsel_rasters')
     
+    str_terrain_dem_path = os.path.join(str_output_dir, '02_model_copies', 'source_terrain', str_terrain_filename)
     
     str_type = 'wsel'
     
