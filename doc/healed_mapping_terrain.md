@@ -54,6 +54,28 @@ old behavior. To independently make accelerated Step05 the default, set
 sloping and healed terrain the default, change both independent settings.
 Use separate output directories for variants.
 
+## Pull the published container
+
+The integration's candidate image is published under the contributor fork:
+
+```sh
+docker pull ghcr.io/gpt-cmdr/ras2fim-2d:healed-native-20261027-r5
+```
+
+For reproducible runs, use the `@sha256:...` registry digest recorded in the
+release's registry-publication artifact and PR. This differs from the Docker image
+ID and the compressed archive's SHA-256. The archive remains a transfer fallback.
+The maintainer can publish the same delivery under their own repository namespace.
+
+`publish-container.yml` runs only when a published release includes `delivery.json`.
+It downloads the attached Docker-save archive, verifies its checksum and loaded
+image ID, then pushes that exact tested image to `ghcr.io/<owner>/<repository>:<tag>`.
+It uses a repository-scoped Actions token with package-write and content-read
+permissions; it does not need a personal access token and does not run on PRs.
+Ordinary releases without a delivery receipt are unaffected. Set package visibility
+to public once in GitHub package settings, then verify an anonymous pull before
+sharing the image. The workflow emits a digest receipt as `registry-publication`.
+
 ## Build and run the container
 
 ```sh
