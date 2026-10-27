@@ -51,6 +51,8 @@ RUN conda create -p /opt/ras2fim-env --override-channels -c conda-forge -y \
     conda clean -a -y
 
 ENV PATH="/opt/ras2fim-env/bin:/opt/conda/bin:$PATH"
+# The env is used by PATH, not activated, so point PROJ and GDAL at its data
+ENV PROJ_DATA="/opt/ras2fim-env/share/proj" GDAL_DATA="/opt/ras2fim-env/share/gdal"
 
 # Rust raster backend for the optional healed mapping stage.
 RUN python -m pip install --no-deps terrio==0.5.0
