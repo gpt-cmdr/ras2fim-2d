@@ -58,7 +58,7 @@ def write_project(models, name):
 
 
 def write_outputs(project):
-    for suffix in stage._REQUIRED_SUFFIXES:
+    for suffix in stage.tup_required_suffixes:
         (project.parent / (project.stem + suffix)).write_bytes(
             (project.stem + suffix).encode()
         )
@@ -66,7 +66,7 @@ def write_outputs(project):
 
 def write_receipt(project, run_id):
     artifacts = []
-    for suffix in stage._REQUIRED_SUFFIXES:
+    for suffix in stage.tup_required_suffixes:
         path = project.parent / (project.stem + suffix)
         artifacts.append({
             "path": path.name,
@@ -116,14 +116,14 @@ def test_all_preprocessors_finish_before_any_artifact_is_staged(generated_models
         with lock:
             completed.add(project.stem)
 
-    original_stage = stage._stage_projects
+    original_stage = stage.fn_stage_projects
 
     def assert_barrier(items, destination):
         assert completed == {project.stem for project in projects}
         original_stage(items, destination)
 
-    with patch.object(stage, "_run_preparation", side_effect=fake_run), \
-            patch.object(stage, "_stage_projects", side_effect=assert_barrier):
+    with patch.object(stage, "fn_run_one_preparation", side_effect=fake_run), \
+            patch.object(stage, "fn_stage_projects", side_effect=assert_barrier):
         stage.fn_prepare_hecras_for_linux(
             config, models, output / "02b_prep_for_ras", 4, 900, False
         )
@@ -131,7 +131,7 @@ def test_all_preprocessors_finish_before_any_artifact_is_staged(generated_models
     for project in projects:
         staged = output / "02b_prep_for_ras" / project.stem
         assert {path.name for path in staged.iterdir()} == {
-            project.stem + suffix for suffix in stage._REQUIRED_SUFFIXES
+            project.stem + suffix for suffix in stage.tup_required_suffixes
         }
 
 
@@ -144,7 +144,7 @@ def test_failed_preparation_does_not_stage_a_partial_batch(generated_models):
         write_outputs(project)
 
     destination = output / "02b_prep_for_ras"
-    with patch.object(stage, "_run_preparation", side_effect=fake_run), \
+    with patch.object(stage, "fn_run_one_preparation", side_effect=fake_run), \
             pytest.raises(RuntimeError, match="model-two: expected failure"):
         stage.fn_prepare_hecras_for_linux(config, models, destination, 4, 900, False)
     assert list(destination.iterdir()) == []
@@ -152,15 +152,15 @@ def test_failed_preparation_does_not_stage_a_partial_batch(generated_models):
 
 def test_receipt_validation_rehashes_all_three_handoff_files(generated_models):
     config, _, _, projects = generated_models
-    settings = stage._load_settings(config)
+    settings = stage.fn_load_wine_settings(config)
     project = projects[0]
     write_outputs(project)
     write_receipt(project, "run-1")
 
-    stage._validate_receipt(settings, project, "run-1")
+    stage.fn_validate_receipt(settings, project, "run-1")
     project.with_suffix(".b01").write_bytes(b"changed")
     with pytest.raises(ValueError, match="changed preparation artifact"):
-        stage._validate_receipt(settings, project, "run-1")
+        stage.fn_validate_receipt(settings, project, "run-1")
 
 
 @pytest.mark.parametrize("value", [None, "1", "2", "8"])
@@ -174,8 +174,8 @@ def test_host_core_configuration_matches_container_and_solver(generated_models, 
         config["03_run_hec_ras"]["int_prepare_cores_per_job"] = value
     with config_path.open("w", encoding="utf-8") as stream:
         config.write(stream)
-    settings = stage._load_settings(config_path)
-    command = stage._container_command(settings, projects[0], 300, "core-test")
+    settings = stage.fn_load_wine_settings(config_path)
+    command = stage.fn_build_container_command(settings, projects[0], 300, "core-test")
     expected = value or "2"
     assert command[command.index("--cpus") + 1] == expected
     assert command[command.index("--num-cores") + 1] == expected
@@ -190,13 +190,13 @@ def test_host_rejects_unsupported_core_configuration(generated_models, value):
     with config_path.open("w", encoding="utf-8") as stream:
         config.write(stream)
     with pytest.raises(ValueError):
-        stage._load_settings(config_path)
+        stage.fn_load_wine_settings(config_path)
 
 
 @pytest.mark.parametrize("num_cores", [None, 8, True, "2", 2.0])
 def test_host_requires_receipt_to_confirm_requested_core_count(generated_models, num_cores):
     config, _, _, projects = generated_models
-    settings = stage._load_settings(config)
+    settings = stage.fn_load_wine_settings(config)
     project = projects[0]
     write_outputs(project)
     write_receipt(project, "cores")
@@ -205,7 +205,7 @@ def test_host_requires_receipt_to_confirm_requested_core_count(generated_models,
     receipt["arguments"]["num_cores"] = num_cores
     receipt_path.write_text(json.dumps(receipt))
     with pytest.raises(ValueError, match="wrong HEC-RAS core count"):
-        stage._validate_receipt(settings, project, "cores")
+        stage.fn_validate_receipt(settings, project, "cores")
 
 
 @pytest.mark.parametrize("num_cores", [None, 1, 2, 8])
@@ -421,8 +421,8 @@ def test_runtime_mount_is_optional_for_bundled_images(generated_models, profile)
         section["str_wine_profile"] = profile
     with config_path.open("w", encoding="utf-8") as stream:
         config.write(stream)
-    settings = stage._load_settings(config_path)
-    command = stage._container_command(settings, projects[0], 300, "bundled-test")
+    settings = stage.fn_load_wine_settings(config_path)
+    command = stage.fn_build_container_command(settings, projects[0], 300, "bundled-test")
     mounts = [command[index + 1] for index, item in enumerate(command) if item == "--mount"]
     runtime_mounts = [mount for mount in mounts if "dst=/runtime/wine-seed" in mount]
     assert runtime_mounts == (["type=bind,src=" + profile + ",dst=/runtime/wine-seed,readonly"] if profile else [])
@@ -673,3 +673,10 @@ def test_controller_uses_wine_environment_and_records_it(tmp_path, monkeypatch):
     assert seen["environment"]["LD_PRELOAD"] == str(shim.resolve())
     assert seen["environment"]["WINEDLLOVERRIDES"] == "winedbg.exe=d"
     assert receipt["wine_environment"]["cpu_shim"]["sha256"] == hashlib.sha256(b"shim").hexdigest()
+
+
+def test_windows_config_keeps_existing_step_02b_by_default():
+    # The Linux/Wine path is used only when the config switch is set to True.
+    config = configparser.ConfigParser()
+    config.read(REPO_ROOT / "src" / "config_global_windows.ini")
+    assert config["03_run_hec_ras"].getboolean("b_prepare_on_linux_wine") is False

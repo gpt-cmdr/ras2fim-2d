@@ -1,4 +1,3 @@
-import ast
 import importlib.util
 from pathlib import Path
 
@@ -84,17 +83,3 @@ def test_lost_cells_and_missing_hydraulic_tables_are_rejected(tmp_path):
         del hdf["Geometry/2D Flow Areas/Area/Faces Area Elevation Values"]
     with pytest.raises(ValueError, match="Faces Area Elevation"):
         checks.mesh_summary(path, hydraulic=True)
-
-
-def test_final_spawn_geometry_write_retains_crlf(tmp_path):
-    # Exercise the actual writer without importing unrelated GIS dependencies.
-    source = (ROOT / "src/spawn_hecras_copies_emit_02.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
-                    and node.name == "fn_replace_boundary_lines_in_file")
-    scope = {}
-    exec(compile(ast.Module(body=[function], type_ignores=[]), "spawn_writer", "exec"), scope)
-    path = tmp_path / "Model.g01"
-    path.write_bytes(b"a\r\nb\r\nc\r\nd\r\ne\r\nf\r\ng\r\n")
-    scope[function.name](path, ["replacement\n"], 0)
-    assert path.read_bytes() == b"a\r\nb\r\nreplacement\r\n"

@@ -128,7 +128,9 @@ host. The receipt records the count as `arguments.num_cores`.
 
 The current two-core setting passed Linux and Windows qualification. The commands above pass the same number to Docker and the worker.
 
-Step 2b reads `int_prepare_cores_per_job` from `[03_run_hec_ras]`, defaults to 2,
+ras2fim-2d uses this container for step 2b only when `b_prepare_on_linux_wine = True`
+in `[03_run_hec_ras]` of `config_global_windows.ini`; the default is the existing
+Windows HEC-RAS 6.6 step. Step 2b reads `int_prepare_cores_per_job` from `[03_run_hec_ras]`, defaults to 2,
 and accepts 1 through 8. It passes the count to both Docker and the worker and
 checks the receipt before staging the generated files.
 
