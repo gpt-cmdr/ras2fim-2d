@@ -560,6 +560,8 @@ def fn_prepare_netcdf_files(str_config_file_path,
     str_terrain_dem_path, terrain_record = mapping_terrain(
         str_config_file_path, model_terrain, terrain_cache, allow_build=False)
     check_netcdf_mapping_inputs(os.path.join(str_output_dir, '06_simple_rasters'), terrain_record)
+    from mapping_engine import check_catalog_engine
+    check_catalog_engine(str_config_file_path, os.path.join(str_output_dir, '06_simple_rasters'))
 
     # supress all warnings
     warnings.filterwarnings("ignore", category=UserWarning )

@@ -1,4 +1,4 @@
-"""Mapping-only integration with FIM Commander's Terrio healed-terrain builder."""
+"""Mapping-only integration with the bundled BSD-licensed Terrio terrain healer."""
 
 import configparser
 import hashlib
@@ -61,23 +61,19 @@ def _settings(config_path):
 
 def _load_builder():
     try:
-        from fim_commander.inundation.healed_terrain import (
-            SCHEMA,
-            build_healed,
-            configure_terrio,
-        )
-        from fim_commander.inundation.rem_tiles import select_tiles
-        from fim_commander.step.healed_terrain import stage_definition
+        from rem_tiles import select_tiles
+        from terrain_healer import SCHEMA, build_healed, configure_terrio
 
         configure_terrio()
         from terrio import __version__
     except ImportError as exc:
         raise MappingTerrainError(
-            "Healing requires Python 3.11+, Terrio 0.5.0 and the FIM Commander "
-            "companion revision in requirements-healed-terrain.txt"
+            "Healing requires Python 3.11+ and requirements-healed-terrain.txt"
         ) from exc
-    if SCHEMA != "fim-commander-healed-terrain-qa/v2" or stage_definition().stage_version != 4:
-        raise MappingTerrainError("Require the raise-only Terrio healed-terrain v4 implementation")
+    if SCHEMA != "ras2fim-2d-healed-terrain-qa/v1":
+        raise MappingTerrainError(
+            "Require the bundled raise-only Terrio implementation"
+        )
     if __version__ != "0.5.0":
         raise MappingTerrainError("Require the qualified Terrio 0.5.0 release")
     return build_healed, select_tiles
@@ -86,7 +82,7 @@ def _load_builder():
 def mapping_terrain(config_path, model_terrain, cache_dir, *, allow_build=True):
     """Build/reuse a mapping-only healed TIFF, returning its path and provenance.
 
-    [05_raster_engine] bln_heal_terrain defaults to false. When enabled, str_rem_tiles
+    [05_raster_engine] str_mapping_terrain defaults to model. When enabled, str_rem_tiles
     names a local district/dsm section library, resolved relative to the config file.
     The input is the native model DEM with terrain modifications already rasterized.
     Heights must be ft or ftUS to match this workflow's NetCDF feet contract. No input
@@ -94,13 +90,20 @@ def mapping_terrain(config_path, model_terrain, cache_dir, *, allow_build=True):
     Step 7 uses allow_build=False and requires the Step 5 cached variant to exist.
     """
     config = _settings(config_path)
-    if not config.getboolean("05_raster_engine", "bln_heal_terrain", fallback=False):
+    mode = config.get(
+        "05_raster_engine", "str_mapping_terrain", fallback="model"
+    ).strip()
+    if mode not in ("model", "healed"):
+        raise MappingTerrainError("str_mapping_terrain must be model or healed")
+    if mode == "model":
         return str(model_terrain), None
     try:
         from terrio import rio
 
         build_healed, select_tiles = _load_builder()
-        source_name = config.get("05_raster_engine", "str_rem_tiles", fallback="").strip()
+        source_name = config.get(
+            "05_raster_engine", "str_rem_tiles", fallback=""
+        ).strip()
         if not source_name:
             raise MappingTerrainError(
                 "Set str_rem_tiles to the local maintenance-section DSM library"
@@ -112,26 +115,36 @@ def mapping_terrain(config_path, model_terrain, cache_dir, *, allow_build=True):
             raise MappingTerrainError(
                 "str_rem_tiles must contain <district>/dsm/*.tif section DSMs"
             )
-        unit = config.get("05_raster_engine", "str_terrain_vertical_unit", fallback="ftUS")
+        unit = config.get(
+            "05_raster_engine", "str_terrain_vertical_unit", fallback="ftUS"
+        )
         if unit not in ("ft", "ftUS"):
             raise MappingTerrainError(
                 "The existing mapping/NetCDF workflow requires terrain in feet"
             )
-        tolerance = config.getfloat("05_raster_engine", "flt_datum_tolerance_ft", fallback=0.5)
+        tolerance = config.getfloat(
+            "05_raster_engine", "flt_datum_tolerance_ft", fallback=0.5
+        )
         if not 0 <= tolerance < float("inf"):
-            raise MappingTerrainError("flt_datum_tolerance_ft must be finite and nonnegative")
+            raise MappingTerrainError(
+                "flt_datum_tolerance_ft must be finite and nonnegative"
+            )
         with rio.open(model_terrain) as base:
             paths, considered = select_tiles(source, tuple(base.bounds), base.crs)
         inputs = {
-            "method": "fim-commander-healed-terrain/v4",
+            "method": "ras2fim-2d-healed-terrain/v1",
             "model_terrain": _file(model_terrain),
-            "tiles": [{"section": p.relative_to(source).as_posix(), **_file(p)} for p in paths],
+            "tiles": [
+                {"section": p.relative_to(source).as_posix(), **_file(p)} for p in paths
+            ],
             "vertical_unit": unit,
             "datum_tolerance_ft": tolerance,
             "terrio": "0.5.0",
         }
         digest = hashlib.sha256(
-            json.dumps(inputs, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+            json.dumps(
+                inputs, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ).encode()
         ).hexdigest()
         cache = Path(cache_dir)
         folder = cache / digest
@@ -139,14 +152,24 @@ def mapping_terrain(config_path, model_terrain, cache_dir, *, allow_build=True):
         if folder.exists():
             record = _json(record_path)
             if record.get("inputs") != inputs or record.get("input_sha256") != digest:
-                raise MappingTerrainError("Cached mapping terrain has inconsistent provenance")
-            for name in ("healed.tif", "difference.tif", "validity.tif", "qa.json"):
+                raise MappingTerrainError(
+                    "Cached mapping terrain has inconsistent provenance"
+                )
+            for name in (
+                "healed.tif",
+                "difference.tif",
+                "validity.tif",
+                "qa.json",
+                "review.html",
+            ):
                 if record.get("outputs", {}).get(name) != _file(folder / name):
                     raise MappingTerrainError(f"Cached mapping terrain changed: {name}")
             _check_qa(_json(folder / "qa.json"))
             return str(folder / "healed.tif"), record
         if not allow_build:
-            raise MappingTerrainError("Run Step 5 with this healing configuration before Step 7")
+            raise MappingTerrainError(
+                "Run Step 5 with this healing configuration before Step 7"
+            )
         cache.mkdir(parents=True, exist_ok=True)
         scratch = Path(tempfile.mkdtemp(prefix=".healing-", dir=cache))
         try:
@@ -159,12 +182,21 @@ def mapping_terrain(config_path, model_terrain, cache_dir, *, allow_build=True):
             )
             qa["sections_considered"] = considered
             _write(scratch / "qa.json", qa)
+            from terrain_review import write_review
+
+            write_review(model_terrain, scratch, qa)
             try:
                 _check_qa(qa)
             except MappingTerrainError:
                 # Retain signed datum diagnostics, but no reusable success marker.
                 scratch.rename(
-                    cache / ("failed-" + digest + "-" + scratch.name.removeprefix(".healing-"))
+                    cache
+                    / (
+                        "failed-"
+                        + digest
+                        + "-"
+                        + scratch.name.removeprefix(".healing-")
+                    )
                 )
                 raise
             if inputs["model_terrain"] != _file(model_terrain) or any(
@@ -184,6 +216,7 @@ def mapping_terrain(config_path, model_terrain, cache_dir, *, allow_build=True):
                         "difference.tif",
                         "validity.tif",
                         "qa.json",
+                        "review.html",
                     )
                 },
                 "mapping_only": True,
@@ -194,18 +227,22 @@ def mapping_terrain(config_path, model_terrain, cache_dir, *, allow_build=True):
         finally:
             if scratch.exists():
                 if scratch.resolve().parent != cache.resolve():
-                    raise MappingTerrainError("Refusing cleanup outside the terrain cache")
+                    raise MappingTerrainError(
+                        "Refusing cleanup outside the terrain cache"
+                    )
                 shutil.rmtree(scratch)
         return str(folder / "healed.tif"), record
     except MappingTerrainError:
         raise
     except (OSError, ValueError, TypeError, KeyError, ImportError) as exc:
-        raise MappingTerrainError(f"Cannot prepare healed mapping terrain: {exc}") from exc
+        raise MappingTerrainError(
+            f"Cannot prepare healed mapping terrain: {exc}"
+        ) from exc
 
 
 def _check_qa(qa):
     if (
-        qa.get("schema") != "fim-commander-healed-terrain-qa/v2"
+        qa.get("schema") != "ras2fim-2d-healed-terrain-qa/v1"
         or qa.get("mapping_only") is not True
         or qa.get("sampling", {}).get("backend") != "terrio"
         or qa.get("datum_check", {}).get("status") not in ("pass", "not_evaluable")
@@ -228,7 +265,9 @@ def bind_mapping_terrain(output_dir, record):
     marker = folder / "mapping_terrain.json"
     if marker.exists():
         if not _same_selection(_json(marker), record):
-            raise MappingTerrainError("Mapping terrain changed; use a separate output folder")
+            raise MappingTerrainError(
+                "Mapping terrain changed; use a separate output folder"
+            )
     elif record is not None:
         if any(folder.rglob("*.tif")) or any(folder.rglob("*.nc")):
             raise MappingTerrainError(
@@ -256,11 +295,29 @@ def check_netcdf_mapping_inputs(step6_dir, record):
 
 def netcdf_mapping_metadata(simple_wsel_dir):
     """Global NetCDF attributes describing the terrain embedded by Step 7."""
+    from mapping_engine import recorded_mapping_engine
+
+    engine = recorded_mapping_engine(Path(simple_wsel_dir).parent)
     record = step5_mapping_record(Path(simple_wsel_dir).parent)
     if record is None:
-        return {"terrain_kind": "model"}
+        return {"terrain_kind": "model", "mapping_engine": engine}
     return {
         "terrain_kind": "healed_mapping_only",
+        "mapping_engine": engine,
         "mapping_terrain_sha256": record["input_sha256"],
         "mapping_terrain_approval": "not_approved",
     }
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Prepare mapping terrain without running hydraulics"
+    )
+    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--terrain", required=True, type=Path)
+    parser.add_argument("--cache", required=True, type=Path)
+    args = parser.parse_args()
+    path, record = mapping_terrain(args.config, args.terrain, args.cache)
+    print(json.dumps({"terrain": path, "provenance": record}, indent=2))

@@ -221,10 +221,11 @@ The output can be used as a library for rapidly retrieving flood inundation info
 
 See the repository license for terms of use.
 
-## Optional healed mapping terrain
+## Optional healed mapping terrain and accelerated mapping
 
-The Python 3.11 mapping runtime can call the Terrio-based FIM Commander healed-terrain
-builder directly. See [the integration guide](doc/healed_mapping_terrain.md) for installation,
-local REM library layout, configuration, QA and reproducible variant outputs. Healing is
-optional and disabled by default. It changes mapping terrain in Steps 5–7; HEC-RAS inputs
-and hydraulic runs continue to use their original terrain.
+The Python 3.11 postprocessing container includes a standalone Terrio terrain healer
+and the public RasCommander Rust mapping engine. Healing and engine selection are
+independent and opt-in. See [the integration guide](doc/healed_mapping_terrain.md)
+for configuration, container builds and operation, QA, catalog defaults, and the
+native sloping catalog option. HEC-RAS inputs and hydraulic runs keep their
+original terrain. No FIM Commander package or private repository is required.

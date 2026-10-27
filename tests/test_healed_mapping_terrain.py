@@ -57,14 +57,13 @@ def inputs(tmp_path):
         out.write(rem, 1)
     config = tmp_path / "config.ini"
     config.write_text(
-        "[05_raster_engine]\nbln_heal_terrain=True\nstr_rem_tiles=rem\n",
+        "[05_raster_engine]\nstr_mapping_terrain=healed\nstr_rem_tiles=rem\n",
         encoding="utf8",
     )
     return config, base, tile, tmp_path / "cache"
 
 
 def real_builder():
-    pytest.importorskip("fim_commander", reason="optional authorized companion integration")
     return terrain._load_builder()
 
 
@@ -72,7 +71,7 @@ def test_disabled_does_not_load_optional_backend(tmp_path, monkeypatch):
     config = tmp_path / "config.ini"
     config.write_text("[05_raster_engine]\n", encoding="utf8")
     monkeypatch.setattr(
-        terrain, "_load_builder", lambda: pytest.fail("unexpected companion import")
+        terrain, "_load_builder", lambda: pytest.fail("unexpected backend import")
     )
     assert terrain.mapping_terrain(config, "model.tif", tmp_path / "cache") == (
         "model.tif",
@@ -177,7 +176,9 @@ def test_step7_does_not_build_a_missing_variant(inputs):
     assert not cache.exists()
 
 
-@pytest.mark.parametrize("setting", ["str_terrain_vertical_unit=m", "flt_datum_tolerance_ft=nan"])
+@pytest.mark.parametrize(
+    "setting", ["str_terrain_vertical_unit=m", "flt_datum_tolerance_ft=nan"]
+)
 def test_invalid_units_or_tolerance_rejected(inputs, setting):
     real_builder()
     config, base, tile, cache = inputs
@@ -192,7 +193,9 @@ def test_existing_untracked_products_and_mismatched_step6_are_rejected(tmp_path)
     output.mkdir()
     (output / "old.tif").write_bytes(b"legacy")
     record = {"input_sha256": "selected"}
-    with pytest.raises(terrain.MappingTerrainError, match="no healed-terrain provenance"):
+    with pytest.raises(
+        terrain.MappingTerrainError, match="no healed-terrain provenance"
+    ):
         terrain.bind_mapping_terrain(output, record)
     with pytest.raises(terrain.MappingTerrainError, match="unrecorded"):
         terrain.check_netcdf_mapping_inputs(output, record)
@@ -202,7 +205,9 @@ def test_existing_untracked_products_and_mismatched_step6_are_rejected(tmp_path)
 
 def _hook(filename, function, stop_at):
     tree = ast.parse((ROOT / "src" / filename).read_text(encoding="utf8"))
-    node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
+    node = next(
+        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function
+    )
     # Execute the real entrypoint's prefix through its first heavy processing operation.
     prefix = []
     for statement in node.body:
@@ -220,6 +225,10 @@ def _hook(filename, function, stop_at):
 
 
 def test_entrypoint_hooks_wire_one_surface_through_steps_5_6_7(tmp_path, monkeypatch):
+    import mapping_engine
+
+    monkeypatch.setattr(mapping_engine, "mapping_engine", lambda path: "legacy")
+    monkeypatch.setattr(mapping_engine, "bind_mapping_engine", lambda *args: None)
     calls = []
     record = {"input_sha256": "selected"}
 
@@ -260,7 +269,9 @@ def test_entrypoint_hooks_wire_one_surface_through_steps_5_6_7(tmp_path, monkeyp
         "check_netcdf_mapping_inputs",
         lambda out, rec: calls.append(("check", out, rec)),
     )
-    fn, ns = _hook("prep_for_netcdf_mp_07.py", "fn_prepare_netcdf_files", "gpd.read_file")
+    fn, ns = _hook(
+        "prep_for_netcdf_mp_07.py", "fn_prepare_netcdf_files", "gpd.read_file"
+    )
     fn("config", "model.tif", str(tmp_path), False)
     assert calls[-2][3] == {"allow_build": False}
     assert calls[-1][2] == record
@@ -270,13 +281,18 @@ def test_active_runtime_files_select_python_311():
     assert "python=3.11" in (ROOT / "Dockerfile").read_text()
     assert "python=3.11" in (ROOT / "environment_ras2fim2d.yml").read_text()
     for path in (ROOT / "src").glob("*.py"):
-        ast.parse(path.read_text(encoding="utf8"), filename=str(path), feature_version=(3, 11))
+        ast.parse(
+            path.read_text(encoding="utf8"), filename=str(path), feature_version=(3, 11)
+        )
 
 
 def test_netcdf_metadata_distinguishes_healed_from_model(tmp_path):
     simple = tmp_path / "simple"
     simple.mkdir()
-    assert terrain.netcdf_mapping_metadata(simple / "01_wsel_rasters") == {"terrain_kind": "model"}
+    assert terrain.netcdf_mapping_metadata(simple / "01_wsel_rasters") == {
+        "terrain_kind": "model",
+        "mapping_engine": "legacy",
+    }
     terrain.bind_mapping_terrain(simple, {"input_sha256": "selected"})
     metadata = terrain.netcdf_mapping_metadata(simple / "01_wsel_rasters")
     assert metadata["terrain_kind"] == "healed_mapping_only"

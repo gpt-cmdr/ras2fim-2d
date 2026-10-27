@@ -22,7 +22,7 @@ RUN apt-get -o Acquire::Check-Valid-Until=false update && \
 
 # --- Use the fast libmamba solver and conda-forge (strict) ---
 # (libmamba is default on recent miniconda3, but set explicitly to be safe)
-RUN conda install -n base -c conda-forge conda-libmamba-solver -y && \
+RUN conda install -n base --override-channels -c conda-forge conda-libmamba-solver -y && \
     conda config --set solver libmamba && \
     conda config --add channels conda-forge && \
     conda config --set channel_priority strict
@@ -30,7 +30,8 @@ RUN conda install -n base -c conda-forge conda-libmamba-solver -y && \
 # --- ONE solve for the entire scientific/geospatial stack ---
 # All C-extension geo libs come from conda-forge so PROJ/GEOS/GDAL
 # stay consistent. No pip wheels for these = no PROJ conflicts.
-RUN conda install -y \
+# Keep the base image Python/conda tools separate from the application runtime.
+RUN conda create -p /opt/ras2fim-env --override-channels -c conda-forge -y \
         python=3.11 \
         gdal \
         rasterio \
@@ -48,14 +49,14 @@ RUN conda install -y \
         h5netcdf && \
     conda clean -a -y
 
-ENV PATH /opt/conda/bin:$PATH
+ENV PATH="/opt/ras2fim-env/bin:/opt/conda/bin:$PATH"
 
 # Rust raster backend for the optional healed mapping stage.
-# The separately licensed FIM Commander wheel is installed by an authorized downstream build.
 RUN python -m pip install --no-deps terrio==0.5.0
 
 # --- Application code, directories, and global inputs ---
 COPY . /ras2fim-2d
+RUN python -m pip install -r /ras2fim-2d/requirements-mapping-engine.txt "numpy<3" "pandas<3"
 RUN mkdir -p /ras2fim-2d && \
     mkdir /global_input /model_input /model_output && \
     wget https://ras2fim-2d-global-inputs.s3.us-east-1.amazonaws.com/LimitingDischarge.csv \
